@@ -40,9 +40,9 @@ export function loadFranchises(): FranchiseConfig[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [MADOKA_DEFAULT];
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return [MADOKA_DEFAULT];
+    return [];
   }
 }
 
