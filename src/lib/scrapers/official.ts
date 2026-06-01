@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { type FeedItem, parseDateTs } from './index';
+import { type FeedItem, parseDateTs, detectCharacters } from './index';
 
 const BASE = 'https://www.madoka-magica.com';
 
@@ -34,6 +34,7 @@ export async function scrapeOfficial(): Promise<FeedItem[]> {
       date,
       dateTs:      parseDateTs(date),
       category:    cat,
+      characters:  detectCharacters(title + ' ' + (cat ?? '')),
     });
   });
 

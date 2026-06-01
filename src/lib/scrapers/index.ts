@@ -9,6 +9,26 @@ export interface FeedItem {
   dateTs: number;        // ソート用タイムスタンプ (ms)
   category?: string;
   imageUrl?: string;
+  characters: string[];  // ['まどか', 'ほむら', ...] / [] = 全員共通
+}
+
+// 5人のキャラクター定義（ここに追加すれば検出対象が増える）
+export const CHARACTERS = ['まどか', 'ほむら', 'まみ', '杏子', 'さやか'] as const;
+export type Character = typeof CHARACTERS[number];
+
+// テキストから登場キャラを検出
+const KEYWORDS: Record<Character, string[]> = {
+  まどか: ['まどか', '鹿目'],
+  ほむら: ['ほむら', '暁美'],
+  まみ:   ['マミ', '巴マミ', '巴'],
+  杏子:   ['杏子', '佐倉'],
+  さやか: ['さやか', '美樹'],
+};
+
+export function detectCharacters(text: string): Character[] {
+  return CHARACTERS.filter((chara) =>
+    KEYWORDS[chara].some((kw) => text.includes(kw))
+  );
 }
 
 // 日付文字列 → タイムスタンプ（ソート用）
