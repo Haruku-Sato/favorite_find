@@ -14,10 +14,25 @@ export const dynamic = 'force-dynamic';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 interface FranchiseInfo {
-  officialUrl: string;
+  officialUrls: string[];
   ichibanUrl: string;
   wikiUrl: string;
   characters: string[];
+}
+
+/** URL に HEAD リクエストして 200 系が返るか確認する */
+async function verifyUrl(url: string): Promise<boolean> {
+  if (!url) return false;
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
+      signal: AbortSignal.timeout(4000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: Request) {
@@ -27,7 +42,7 @@ export async function POST(req: Request) {
   }
 
   // ── Claude に URL とキャラクター情報を聞く ─────────────────────────────
-  let info: FranchiseInfo = { officialUrl: '', ichibanUrl: '', wikiUrl: '', characters: [] };
+  let info: FranchiseInfo = { officialUrls: [], ichibanUrl: '', wikiUrl: '', characters: [] };
 
   try {
     const response = await client.messages.create({
@@ -40,9 +55,11 @@ export async function POST(req: Request) {
           input_schema: {
             type: 'object' as const,
             properties: {
-              officialUrl: {
-                type: 'string',
-                description: '公式アニメ・ゲームサイトの URL。不明なら空文字。',
+              officialUrls: {
+                type: 'array',
+                items: { type: 'string' },
+                description:
+                  '公式アニメ・ゲームサイトの URL 候補。知っているものをすべて列挙する。確信がなくても可能性があれば含める。最大3件。',
               },
               ichibanUrl: {
                 type: 'string',
@@ -58,7 +75,7 @@ export async function POST(req: Request) {
                 description: '主要キャラクターの名前リスト（日本語）。最大10名。',
               },
             },
-            required: ['officialUrl', 'ichibanUrl', 'wikiUrl', 'characters'],
+            required: ['officialUrls', 'ichibanUrl', 'wikiUrl', 'characters'],
           },
         },
       ],
@@ -66,7 +83,7 @@ export async function POST(req: Request) {
       messages: [
         {
           role: 'user',
-          content: `アニメ・マンガ作品「${name}」について教えてください。URLは実在するものだけを答えてください。不明・自信がないURLは空文字にしてください。`,
+          content: `アニメ・マンガ作品「${name}」の公式サイト URL を知っている範囲で教えてください。確信がなくても候補として挙げてください（後で実在確認します）。`,
         },
       ],
     });
@@ -83,8 +100,15 @@ export async function POST(req: Request) {
   // ── sources を組み立てる ───────────────────────────────────────────────
   const sources: SourceConfig[] = [];
 
-  if (info.officialUrl) {
-    sources.push({ type: 'official', label: '公式', url: info.officialUrl });
+  // 候補URLを並列で検証し、最初に通ったものを採用
+  const officialUrl = await (async () => {
+    const candidates = (info.officialUrls ?? []).filter(Boolean);
+    const results = await Promise.all(candidates.map((u) => verifyUrl(u).then((ok) => ({ u, ok }))));
+    return results.find((r) => r.ok)?.u ?? '';
+  })();
+
+  if (officialUrl) {
+    sources.push({ type: 'official', label: '公式', url: officialUrl });
   }
 
   if (info.ichibanUrl) {
