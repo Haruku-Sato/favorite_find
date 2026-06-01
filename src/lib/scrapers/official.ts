@@ -1,18 +1,26 @@
 import * as cheerio from 'cheerio';
-import { type FeedItem, parseDateTs, detectCharacters } from './index';
+import type { FranchiseConfig, SourceConfig } from '@/lib/franchise';
+import { detectCharacters } from '@/lib/franchise';
+import { type FeedItem, parseDateTs } from './index';
 
-const BASE = 'https://www.madoka-magica.com';
+// madoka-magica.com の固有セレクタ（他の公式サイトは generic.ts にフォールバック）
+const MADOKA_BASE = 'https://www.madoka-magica.com';
 
-export async function scrapeOfficial(): Promise<FeedItem[]> {
-  const res = await fetch(BASE + '/', {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MadokaHub/1.0)' },
+export async function scrapeOfficial(
+  source: SourceConfig,
+  franchise: FranchiseConfig
+): Promise<FeedItem[]> {
+  const res = await fetch(source.url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
     next: { revalidate: 3600 },
   });
   if (!res.ok) throw new Error(`official: HTTP ${res.status}`);
 
-  const $ = cheerio.load(await res.text());
-  const items: FeedItem[] = [];
+  const html = await res.text();
+  const $ = cheerio.load(html);
 
+  // まどマギ公式専用セレクタ
+  const items: FeedItem[] = [];
   $('.p-info_news__list-item').each((_, el) => {
     const $a    = $(el).find('a.p-info_news_article');
     const href  = $a.attr('href') ?? '';
@@ -22,21 +30,27 @@ export async function scrapeOfficial(): Promise<FeedItem[]> {
 
     if (!title || !href) return;
 
-    const url = href.startsWith('http') ? href : BASE + href;
+    const base = new URL(source.url).origin;
+    const url  = href.startsWith('http') ? href : base + href;
+    const text = title + ' ' + (cat ?? '');
 
     items.push({
-      id:          `official:${href}`,
+      id:          `${franchise.id}:official:${href}`,
       source:      'official',
-      sourceLabel: '公式',
-      sourceUrl:   BASE,
-      title,
-      url,
-      date,
+      sourceLabel: source.label,
+      sourceUrl:   source.url,
+      title, url, date,
       dateTs:      parseDateTs(date),
       category:    cat,
-      characters:  detectCharacters(title + ' ' + (cat ?? '')),
+      characters:  detectCharacters(text, franchise.characters),
     });
   });
+
+  // セレクタがマッチしなかった場合は generic にフォールバック
+  if (items.length === 0) {
+    const { scrapeGeneric } = await import('./generic');
+    return scrapeGeneric(source, franchise);
+  }
 
   return items;
 }

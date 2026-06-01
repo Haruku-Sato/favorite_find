@@ -1,9 +1,11 @@
+// 旧エンドポイント → /api/franchise/scrape に移行済み
+// まどマギ固定で後方互換のために残す
 import { scrapeAll } from '@/lib/scrapers';
+import { MADOKA_DEFAULT } from '@/lib/franchise';
 
-// 手動更新ボタン用：キャッシュなしで最新を取得
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const items = await scrapeAll();
+  const items = await scrapeAll(MADOKA_DEFAULT);
   return Response.json(items);
 }

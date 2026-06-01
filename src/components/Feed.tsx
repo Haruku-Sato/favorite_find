@@ -2,88 +2,93 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { FeedItem } from '@/lib/scrapers';
-import { CHARACTERS, type Character } from '@/lib/scrapers';
+import type { FranchiseConfig } from '@/lib/franchise';
 
 const SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
-  official: { bg: '#1a2f4a', color: '#58a6ff' },
-  ichiban:  { bg: '#3d1a1a', color: '#f85149' },
+  official:       { bg: '#1a2f4a', color: '#58a6ff' },
+  ichiban:        { bg: '#3d1a1a', color: '#f85149' },
+  'ichiban-search': { bg: '#3d1a1a', color: '#f85149' },
+  generic:        { bg: '#1a3a2a', color: '#3fb950' },
 };
 const DEFAULT_COLOR = { bg: '#1a3a2a', color: '#3fb950' };
 
-// キャラごとのイメージカラー
-const CHARA_COLORS: Record<Character, string> = {
-  まどか: '#f472b6',
-  ほむら: '#a78bfa',
-  まみ:   '#fbbf24',
-  杏子:   '#f87171',
-  さやか: '#60a5fa',
-};
+// デフォルトのキャラカラーパレット
+const PALETTE = ['#f472b6','#a78bfa','#fbbf24','#f87171','#60a5fa','#34d399','#fb923c','#e879f9'];
 
-const SEEN_KEY = 'madoka_hub_seen';
+function getCharColor(chars: FranchiseConfig['characters'], name: string, idx: number): string {
+  return chars.find((c) => c.name === name)?.color ?? PALETTE[idx % PALETTE.length];
+}
 
-function loadSeen(): Set<string> {
+const SEEN_KEY_PREFIX = 'favorite_find_seen_';
+function loadSeen(franchiseId: string): Set<string> {
   try {
-    const raw = localStorage.getItem(SEEN_KEY);
+    const raw = localStorage.getItem(SEEN_KEY_PREFIX + franchiseId);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch { return new Set(); }
 }
-function saveSeen(seen: Set<string>) {
-  localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]));
+function saveSeen(franchiseId: string, seen: Set<string>) {
+  localStorage.setItem(SEEN_KEY_PREFIX + franchiseId, JSON.stringify([...seen]));
 }
 
-interface Props { initialItems: FeedItem[] }
+interface Props {
+  franchise: FranchiseConfig;
+  initialItems: FeedItem[];
+}
 
-export default function Feed({ initialItems }: Props) {
+export default function Feed({ franchise, initialItems }: Props) {
   const [items, setItems]           = useState<FeedItem[]>(initialItems);
   const [seen, setSeen]             = useState<Set<string>>(new Set());
-  const [sourceFilter, setSource]   = useState<string>('all');
-  const [charaFilter, setChara]     = useState<Character | null>(null);
+  const [sourceFilter, setSource]   = useState('all');
+  const [charaFilter, setChara]     = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
-    setSeen(loadSeen());
+    setSeen(loadSeen(franchise.id));
     setLastUpdated(new Date());
-  }, []);
+    setSource('all');
+    setChara(null);
+  }, [franchise.id]);
 
   const markSeen = useCallback((id: string) => {
     setSeen((prev) => {
       const next = new Set(prev);
       next.add(id);
-      saveSeen(next);
+      saveSeen(franchise.id, next);
       return next;
     });
-  }, []);
+  }, [franchise.id]);
 
   const markAllSeen = () => {
     const next = new Set(items.map((i) => i.id));
-    saveSeen(next);
+    saveSeen(franchise.id, next);
     setSeen(next);
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch('/api/scrape?t=' + Date.now());
+      const res = await fetch('/api/franchise/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ franchise }),
+      });
       setItems(await res.json());
       setLastUpdated(new Date());
     } catch (e) { console.error(e); }
     finally { setRefreshing(false); }
   };
 
-  // フィルタリング
   const filtered = items.filter((item) => {
     if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
     if (charaFilter) {
-      // キャラ未タグ（公式全体ニュースなど）はキャラフィルター時は除外
       if (item.characters.length === 0) return false;
       if (!item.characters.includes(charaFilter)) return false;
     }
     return true;
   });
 
-  const unseenCount = filtered.filter((i) => !seen.has(i.id)).length;
-
+  const unseenCount   = filtered.filter((i) => !seen.has(i.id)).length;
   const sourceLabel: Record<string, string> = {};
   items.forEach((i) => { sourceLabel[i.source] = i.sourceLabel; });
   const sources = ['all', ...Array.from(new Set(items.map((i) => i.source)))];
@@ -91,13 +96,13 @@ export default function Feed({ initialItems }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* ── Header ── */}
-      <header style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 1.5rem', position: 'sticky', top: 0, zIndex: 10 }}>
+      {/* ── ヘッダー ── */}
+      <div style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 1.5rem', position: 'sticky', top: 52, zIndex: 9 }}>
         <div style={{ maxWidth: 800, margin: '0 auto' }}>
 
           {/* タイトル行 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', height: 52 }}>
-            <span style={{ fontWeight: 700, fontSize: '1rem' }}>まどマギ情報まとめ</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', height: 48, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{franchise.name}</span>
             {lastUpdated && (
               <span style={{ fontSize: '0.7rem', color: '#484f58' }}>
                 {lastUpdated.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} 更新
@@ -126,34 +131,25 @@ export default function Feed({ initialItems }: Props) {
           </div>
 
           {/* キャラフィルター */}
-          <div style={{ display: 'flex', gap: 4, paddingBottom: 10, flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setChara(null)}
-              style={{
-                ...tabBtn(charaFilter === null),
-                color: charaFilter === null ? '#e6edf3' : '#8b949e',
-              }}
-            >
-              全員
-            </button>
-            {CHARACTERS.map((chara) => (
-              <button
-                key={chara}
-                onClick={() => setChara(charaFilter === chara ? null : chara)}
-                style={{
-                  ...tabBtn(charaFilter === chara),
-                  borderColor: charaFilter === chara ? CHARA_COLORS[chara] : 'transparent',
-                  color: charaFilter === chara ? CHARA_COLORS[chara] : '#8b949e',
-                }}
-              >
-                {chara}
-              </button>
-            ))}
-          </div>
+          {franchise.characters.length > 0 && (
+            <div style={{ display: 'flex', gap: 4, paddingBottom: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => setChara(null)} style={tabBtn(charaFilter === null)}>全員</button>
+              {franchise.characters.map((c, i) => {
+                const col = getCharColor(franchise.characters, c.name, i);
+                const active = charaFilter === c.name;
+                return (
+                  <button key={c.name} onClick={() => setChara(active ? null : c.name)}
+                    style={{ ...tabBtn(active), borderColor: active ? col : 'transparent', color: active ? col : '#8b949e' }}>
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </header>
+      </div>
 
-      {/* ── Feed ── */}
+      {/* ── フィード ── */}
       <main style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem' }}>
         {filtered.length === 0 ? (
           <p style={{ color: '#484f58', textAlign: 'center', marginTop: '4rem' }}>
@@ -165,20 +161,14 @@ export default function Feed({ initialItems }: Props) {
               const isNew = !seen.has(item.id);
               const col = SOURCE_COLORS[item.source] ?? DEFAULT_COLOR;
               return (
-                <a
-                  key={item.id}
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer"
                   onClick={() => markSeen(item.id)}
                   style={{
-                    display: 'flex', gap: '1rem',
-                    background: '#161b22',
+                    display: 'flex', gap: '1rem', background: '#161b22',
                     border: `1px solid ${isNew ? '#388bfd44' : '#30363d'}`,
                     borderRadius: 10, padding: '0.9rem 1rem',
                     textDecoration: 'none', color: 'inherit',
-                    opacity: seen.has(item.id) ? 0.6 : 1,
-                    transition: 'background 0.15s',
+                    opacity: seen.has(item.id) ? 0.6 : 1, transition: 'background 0.15s',
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = '#1c2128')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = '#161b22')}
@@ -186,9 +176,7 @@ export default function Feed({ initialItems }: Props) {
                   {item.imageUrl && (
                     <img src={item.imageUrl} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
                   )}
-
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* バッジ行 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '0.35rem', flexWrap: 'wrap' }}>
                       <span style={{ background: col.bg, color: col.color, borderRadius: 4, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>
                         {item.sourceLabel}
@@ -196,20 +184,17 @@ export default function Feed({ initialItems }: Props) {
                       {isNew && (
                         <span style={{ background: '#1f6feb', color: 'white', borderRadius: 4, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>NEW</span>
                       )}
-                      {/* キャラバッジ */}
-                      {item.characters.map((chara) => (
-                        <span key={chara} style={{ borderRadius: 4, padding: '1px 7px', fontSize: '0.68rem', fontWeight: 600,
-                          border: `1px solid ${CHARA_COLORS[chara as Character] ?? '#444'}`,
-                          color: CHARA_COLORS[chara as Character] ?? '#aaa' }}>
-                          {chara}
-                        </span>
-                      ))}
+                      {item.characters.map((chara, i) => {
+                        const idx = franchise.characters.findIndex((c) => c.name === chara);
+                        const color = getCharColor(franchise.characters, chara, idx >= 0 ? idx : i);
+                        return (
+                          <span key={chara} style={{ color, fontSize: '0.7rem', fontWeight: 600 }}>{chara}</span>
+                        );
+                      })}
                       {item.category && <span style={{ color: '#8b949e', fontSize: '0.7rem' }}>{item.category}</span>}
                       <span style={{ color: '#484f58', fontSize: '0.7rem', marginLeft: 'auto' }}>{item.date ?? ''}</span>
                     </div>
-
-                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, lineHeight: 1.4,
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.title}
                     </p>
                   </div>
@@ -227,11 +212,10 @@ const ghostBtn: React.CSSProperties = {
   background: 'none', border: '1px solid #30363d', color: '#8b949e',
   borderRadius: 6, padding: '4px 12px', fontSize: '0.78rem', cursor: 'pointer', whiteSpace: 'nowrap',
 };
-
 const tabBtn = (active: boolean): React.CSSProperties => ({
   background: active ? '#21262d' : 'transparent',
   color: active ? '#e6edf3' : '#8b949e',
   border: `1px solid ${active ? '#30363d' : 'transparent'}`,
-  borderRadius: 6, padding: '3px 12px', fontSize: '0.78rem',
+  borderRadius: 6, padding: '3px 10px', fontSize: '0.76rem',
   cursor: 'pointer', fontWeight: active ? 600 : 400,
 });
