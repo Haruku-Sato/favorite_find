@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { FranchiseConfig, CharacterDef, SourceConfig } from '@/lib/franchise';
 
 interface Props {
@@ -9,6 +9,11 @@ interface Props {
 }
 
 type Step = 'input' | 'searching' | 'confirm' | 'error';
+
+interface Suggestion {
+  title: string;
+  thumb: string;
+}
 
 export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   const [name, setName]         = useState('');
@@ -20,8 +25,81 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   const [editChars, setEditChars]     = useState<CharacterDef[]>([]);
   const [editSources, setEditSources] = useState<SourceConfig[]>([]);
 
+  // サジェスト
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggFocus, setSuggFocus]     = useState(-1);
+  const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef                      = useRef<HTMLInputElement>(null);
+
+  // 入力変化 → Jikan API でサジェスト取得（400ms デバウンス）
+  useEffect(() => {
+    if (step !== 'input' && step !== 'error') return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+      setSuggestions([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(trimmed)}&limit=6&sfw=true`,
+        );
+        const json = await res.json();
+        const items: Suggestion[] = (json.data ?? []).map((a: Record<string, unknown>) => ({
+          title: (a.title_japanese as string) || (a.title as string) || '',
+          thumb: (a.images as Record<string, Record<string, string>>)?.jpg?.small_image_url ?? '',
+        })).filter((s: Suggestion) => s.title);
+        setSuggestions(items);
+        setSuggFocus(-1);
+      } catch {
+        // ネットワークエラーは無視
+      }
+    }, 400);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [name, step]);
+
+  const selectSuggestion = (title: string) => {
+    setName(title);
+    setSuggestions([]);
+    setSuggFocus(-1);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggFocus((i) => Math.min(i + 1, suggestions.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggFocus((i) => Math.max(i - 1, -1));
+        return;
+      }
+      if (e.key === 'Escape') {
+        setSuggestions([]);
+        return;
+      }
+      if (e.key === 'Enter' && suggFocus >= 0) {
+        e.preventDefault();
+        selectSuggestion(suggestions[suggFocus].title);
+        return;
+      }
+    }
+    if (e.key === 'Enter') handleSearch();
+  };
+
   const handleSearch = async () => {
     if (!name.trim()) return;
+    setSuggestions([]);
     setStep('searching');
     try {
       const res = await fetch('/api/franchise/setup', {
@@ -47,11 +125,8 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     onClose();
   };
 
-  const removeChar = (i: number) =>
-    setEditChars((prev) => prev.filter((_, idx) => idx !== i));
-
-  const removeSource = (i: number) =>
-    setEditSources((prev) => prev.filter((_, idx) => idx !== i));
+  const removeChar   = (i: number) => setEditChars((prev) => prev.filter((_, idx) => idx !== i));
+  const removeSource = (i: number) => setEditSources((prev) => prev.filter((_, idx) => idx !== i));
 
   return (
     <div
@@ -67,14 +142,56 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
         {/* ── 検索入力 ── */}
         {(step === 'input' || step === 'error') && (
           <>
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="例: ヒロアカ、鬼滅の刃、推しの子"
-              style={{ ...inputStyle, marginBottom: '0.75rem' }}
-            />
+            {/* 入力 + サジェストをまとめるラッパー */}
+            <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+              <input
+                ref={inputRef}
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+                placeholder="例: ヒロアカ、鬼滅の刃、推しの子"
+                style={inputStyle}
+              />
+
+              {/* サジェストドロップダウン */}
+              {suggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0,
+                  background: '#1c2128', border: '1px solid #30363d', borderRadius: 6,
+                  zIndex: 20, overflow: 'hidden',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                }}>
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      onMouseDown={() => selectSuggestion(s.title)}
+                      onMouseEnter={() => setSuggFocus(i)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '7px 12px',
+                        background: i === suggFocus ? '#21262d' : 'transparent',
+                        border: 'none', borderBottom: i < suggestions.length - 1 ? '1px solid #21262d' : 'none',
+                        color: '#e6edf3', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left',
+                      }}
+                    >
+                      {s.thumb && (
+                        <img
+                          src={s.thumb}
+                          alt=""
+                          style={{ width: 24, height: 34, objectFit: 'cover', borderRadius: 2, flexShrink: 0 }}
+                        />
+                      )}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.title}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {step === 'error' && (
               <p style={{ color: '#f85149', fontSize: '0.82rem', marginBottom: '0.75rem' }}>{errMsg}</p>
             )}
