@@ -5,14 +5,13 @@ import type { FeedItem } from '@/lib/scrapers';
 import type { FranchiseConfig } from '@/lib/franchise';
 
 const SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
-  official:       { bg: '#1a2f4a', color: '#58a6ff' },
-  ichiban:        { bg: '#3d1a1a', color: '#f85149' },
+  official:         { bg: '#1a2f4a', color: '#58a6ff' },
+  ichiban:          { bg: '#3d1a1a', color: '#f85149' },
   'ichiban-search': { bg: '#3d1a1a', color: '#f85149' },
-  generic:        { bg: '#1a3a2a', color: '#3fb950' },
+  generic:          { bg: '#1a3a2a', color: '#3fb950' },
 };
 const DEFAULT_COLOR = { bg: '#1a3a2a', color: '#3fb950' };
 
-// デフォルトのキャラカラーパレット
 const PALETTE = ['#f472b6','#a78bfa','#fbbf24','#f87171','#60a5fa','#34d399','#fb923c','#e879f9'];
 
 function getCharColor(chars: FranchiseConfig['characters'], name: string, idx: number): string {
@@ -36,11 +35,11 @@ interface Props {
 }
 
 export default function Feed({ franchise, initialItems }: Props) {
-  const [items, setItems]           = useState<FeedItem[]>(initialItems);
-  const [seen, setSeen]             = useState<Set<string>>(new Set());
-  const [sourceFilter, setSource]   = useState('all');
-  const [charaFilter, setChara]     = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [items, setItems]             = useState<FeedItem[]>(initialItems);
+  const [seen, setSeen]               = useState<Set<string>>(new Set());
+  const [sourceFilter, setSource]     = useState('all');
+  const [charaFilter, setChara]       = useState<string | null>(null);
+  const [refreshing, setRefreshing]   = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -88,28 +87,27 @@ export default function Feed({ franchise, initialItems }: Props) {
     return true;
   });
 
-  const unseenCount   = filtered.filter((i) => !seen.has(i.id)).length;
+  const unseenCount = filtered.filter((i) => !seen.has(i.id)).length;
   const sourceLabel: Record<string, string> = {};
   items.forEach((i) => { sourceLabel[i.source] = i.sourceLabel; });
   const sources = ['all', ...Array.from(new Set(items.map((i) => i.source)))];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--c-text)', fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* ── ヘッダー ── */}
-      <div style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 1.5rem', position: 'sticky', top: 52, zIndex: 9 }}>
+      {/* ── フィードヘッダー ── */}
+      <div style={{ background: 'var(--c-bg2)', borderBottom: '1px solid var(--c-border)', padding: '0 1.5rem', position: 'sticky', top: 52, zIndex: 9 }}>
         <div style={{ maxWidth: 800, margin: '0 auto' }}>
 
-          {/* タイトル行 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', height: 48, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{franchise.name}</span>
             {lastUpdated && (
-              <span style={{ fontSize: '0.7rem', color: '#484f58' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--c-text3)' }}>
                 {lastUpdated.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} 更新
               </span>
             )}
             {unseenCount > 0 && (
-              <span style={{ background: '#1f6feb', color: 'white', borderRadius: 100, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
+              <span style={{ background: 'var(--c-blue)', color: 'white', borderRadius: 100, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
                 NEW {unseenCount}
               </span>
             )}
@@ -139,7 +137,7 @@ export default function Feed({ franchise, initialItems }: Props) {
                 const active = charaFilter === c.name;
                 return (
                   <button key={c.name} onClick={() => setChara(active ? null : c.name)}
-                    style={{ ...tabBtn(active), borderColor: active ? col : 'transparent', color: active ? col : '#8b949e' }}>
+                    style={{ ...tabBtn(active), borderColor: active ? col : 'transparent', color: active ? col : 'var(--c-text2)' }}>
                     {c.name}
                   </button>
                 );
@@ -149,10 +147,10 @@ export default function Feed({ franchise, initialItems }: Props) {
         </div>
       </div>
 
-      {/* ── フィード ── */}
+      {/* ── フィード本体 ── */}
       <main style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem' }}>
         {filtered.length === 0 ? (
-          <p style={{ color: '#484f58', textAlign: 'center', marginTop: '4rem' }}>
+          <p style={{ color: 'var(--c-text3)', textAlign: 'center', marginTop: '4rem' }}>
             {charaFilter ? `${charaFilter}の情報が見つかりませんでした` : '情報が見つかりませんでした'}
           </p>
         ) : (
@@ -164,14 +162,14 @@ export default function Feed({ franchise, initialItems }: Props) {
                 <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer"
                   onClick={() => markSeen(item.id)}
                   style={{
-                    display: 'flex', gap: '1rem', background: '#161b22',
-                    border: `1px solid ${isNew ? '#388bfd44' : '#30363d'}`,
+                    display: 'flex', gap: '1rem', background: 'var(--c-bg2)',
+                    border: `1px solid ${isNew ? 'var(--c-new-border)' : 'var(--c-border)'}`,
                     borderRadius: 10, padding: '0.9rem 1rem',
                     textDecoration: 'none', color: 'inherit',
                     opacity: seen.has(item.id) ? 0.6 : 1, transition: 'background 0.15s',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#1c2128')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#161b22')}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-bg3)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--c-bg2)')}
                 >
                   {item.imageUrl && (
                     <img src={item.imageUrl} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
@@ -182,7 +180,7 @@ export default function Feed({ franchise, initialItems }: Props) {
                         {item.sourceLabel}
                       </span>
                       {isNew && (
-                        <span style={{ background: '#1f6feb', color: 'white', borderRadius: 4, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>NEW</span>
+                        <span style={{ background: 'var(--c-blue)', color: 'white', borderRadius: 4, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>NEW</span>
                       )}
                       {item.characters.map((chara, i) => {
                         const idx = franchise.characters.findIndex((c) => c.name === chara);
@@ -191,8 +189,8 @@ export default function Feed({ franchise, initialItems }: Props) {
                           <span key={chara} style={{ color, fontSize: '0.7rem', fontWeight: 600 }}>{chara}</span>
                         );
                       })}
-                      {item.category && <span style={{ color: '#8b949e', fontSize: '0.7rem' }}>{item.category}</span>}
-                      <span style={{ color: '#484f58', fontSize: '0.7rem', marginLeft: 'auto' }}>{item.date ?? ''}</span>
+                      {item.category && <span style={{ color: 'var(--c-text2)', fontSize: '0.7rem' }}>{item.category}</span>}
+                      <span style={{ color: 'var(--c-text3)', fontSize: '0.7rem', marginLeft: 'auto' }}>{item.date ?? ''}</span>
                     </div>
                     <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.title}
@@ -209,13 +207,13 @@ export default function Feed({ franchise, initialItems }: Props) {
 }
 
 const ghostBtn: React.CSSProperties = {
-  background: 'none', border: '1px solid #30363d', color: '#8b949e',
+  background: 'none', border: '1px solid var(--c-border)', color: 'var(--c-text2)',
   borderRadius: 6, padding: '4px 12px', fontSize: '0.78rem', cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const tabBtn = (active: boolean): React.CSSProperties => ({
-  background: active ? '#21262d' : 'transparent',
-  color: active ? '#e6edf3' : '#8b949e',
-  border: `1px solid ${active ? '#30363d' : 'transparent'}`,
+  background: active ? 'var(--c-bg4)' : 'transparent',
+  color: active ? 'var(--c-text)' : 'var(--c-text2)',
+  border: `1px solid ${active ? 'var(--c-border)' : 'transparent'}`,
   borderRadius: 6, padding: '3px 10px', fontSize: '0.76rem',
   cursor: 'pointer', fontWeight: active ? 600 : 400,
 });

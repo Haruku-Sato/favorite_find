@@ -20,16 +20,12 @@ interface FranchiseInfo {
   characters: string[];
 }
 
-/** URL に HEAD リクエストして 200 系が返るか確認する */
-async function verifyUrl(url: string): Promise<boolean> {
+/** URL が http/https で始まる基本的な形式チェックのみ行う */
+function looksLikeUrl(url: string): boolean {
   if (!url) return false;
   try {
-    const res = await fetch(url, {
-      method: 'HEAD',
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
-      signal: AbortSignal.timeout(4000),
-    });
-    return res.ok;
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:';
   } catch {
     return false;
   }
@@ -100,12 +96,8 @@ export async function POST(req: Request) {
   // ── sources を組み立てる ───────────────────────────────────────────────
   const sources: SourceConfig[] = [];
 
-  // 候補URLを並列で検証し、最初に通ったものを採用
-  const officialUrl = await (async () => {
-    const candidates = (info.officialUrls ?? []).filter(Boolean);
-    const results = await Promise.all(candidates.map((u) => verifyUrl(u).then((ok) => ({ u, ok }))));
-    return results.find((r) => r.ok)?.u ?? '';
-  })();
+  // 候補URLから形式が正しい最初のものを採用（ネットワーク検証はしない）
+  const officialUrl = (info.officialUrls ?? []).find(looksLikeUrl) ?? '';
 
   if (officialUrl) {
     sources.push({ type: 'official', label: '公式', url: officialUrl });
