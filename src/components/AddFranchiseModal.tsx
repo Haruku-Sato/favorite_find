@@ -13,6 +13,7 @@ type Step = 'input' | 'searching' | 'confirm' | 'error';
 interface Suggestion {
   title: string;
   thumb: string;
+  malId: number;
 }
 
 export default function AddFranchiseModal({ onAdd, onClose }: Props) {
@@ -28,6 +29,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   // サジェスト
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggFocus, setSuggFocus]     = useState(-1);
+  const [selectedMalId, setSelectedMalId] = useState<number | null>(null);
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef                      = useRef<HTMLInputElement>(null);
 
@@ -46,12 +48,13 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(trimmed)}&limit=6&sfw=true`,
+          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(trimmed)}&limit=10&sfw=true`,
         );
         const json = await res.json();
         const items: Suggestion[] = (json.data ?? []).map((a: Record<string, unknown>) => ({
           title: (a.title_japanese as string) || (a.title as string) || '',
           thumb: (a.images as Record<string, Record<string, string>>)?.jpg?.small_image_url ?? '',
+          malId: (a.mal_id as number) ?? 0,
         })).filter((s: Suggestion) => s.title);
         setSuggestions(items);
         setSuggFocus(-1);
@@ -65,8 +68,9 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     };
   }, [name, step]);
 
-  const selectSuggestion = (title: string) => {
-    setName(title);
+  const selectSuggestion = (s: Suggestion) => {
+    setName(s.title);
+    setSelectedMalId(s.malId || null);
     setSuggestions([]);
     setSuggFocus(-1);
     inputRef.current?.focus();
@@ -93,7 +97,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
       }
       if (e.key === 'Enter' && suggFocus >= 0) {
         e.preventDefault();
-        selectSuggestion(suggestions[suggFocus].title);
+        selectSuggestion(suggestions[suggFocus]);
         return;
       }
     }
@@ -108,7 +112,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
       const res = await fetch('/api/franchise/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name: name.trim(), malId: selectedMalId }),
       });
       if (!res.ok) throw new Error(await res.text());
       const config: FranchiseConfig = await res.json();
@@ -151,7 +155,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
                 ref={inputRef}
                 autoFocus
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => { setName(e.target.value); setSelectedMalId(null); }}
                 onKeyDown={handleKeyDown}
                 onBlur={() => setTimeout(() => setSuggestions([]), 150)}
                 placeholder="例: ヒロアカ、鬼滅の刃、推しの子"
@@ -169,7 +173,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
                   {suggestions.map((s, i) => (
                     <button
                       key={i}
-                      onMouseDown={() => selectSuggestion(s.title)}
+                      onMouseDown={() => selectSuggestion(s)}
                       onMouseEnter={() => setSuggFocus(i)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,

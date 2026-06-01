@@ -12,12 +12,21 @@ export interface SourceConfig {
   url: string;
 }
 
+/** 同一フランチャイズ内の個別エントリ（TVシリーズ・劇場版など） */
+export interface FranchiseEntry {
+  id: string;
+  label: string;       // "TVアニメ", "劇場版 叛逆の物語" など
+  malId?: number;      // MyAnimeList ID
+  sources: SourceConfig[];
+}
+
 export interface FranchiseConfig {
   id: string;
   name: string;               // 表示名
   searchName: string;         // 検索用（英語名など）
   characters: CharacterDef[];
-  sources: SourceConfig[];
+  sources: SourceConfig[];    // 「全体」用ソース
+  entries?: FranchiseEntry[]; // 複数作品ある場合のディレクトリ
   createdAt: string;
 }
 
