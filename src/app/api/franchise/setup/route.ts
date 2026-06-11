@@ -10,7 +10,38 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { detectCharactersFromWikipedia } from '@/lib/wikiCharacters';
-import type { FranchiseConfig, FranchiseEntry, SourceConfig, CharacterDef } from '@/lib/franchise';
+import { braveSearch } from '@/lib/brave';
+import type { FranchiseConfig, FranchiseEntry, SourceConfig, SourceCandidate, CharacterDef } from '@/lib/franchise';
+
+// ── コラボ監視用 RSS フィード（固定） ────────────────────
+const COLLAB_RSS: SourceCandidate[] = [
+  { category: 'collab', type: 'rss', label: 'アニメイトタイムズ', url: 'https://www.animatetimes.com/rss/news.xml' },
+  { category: 'collab', type: 'rss', label: 'アニメ!アニメ!',     url: 'https://animeanime.jp/rss/index.rdf' },
+  { category: 'collab', type: 'rss', label: 'ナタリー',           url: 'https://natalie.mu/comic/feed/news' },
+];
+
+// ── Brave 検索結果をソース候補に変換 ─────────────────────
+const EXCLUDE_DOMAINS = /twitter|x\.com|facebook|instagram|youtube|wikipedia|amazon|rakuten|mercari|yahoo/i;
+
+function braveToCandidate(
+  results: Awaited<ReturnType<typeof braveSearch>>,
+  category: SourceCandidate['category'],
+): SourceCandidate[] {
+  const seen = new Set<string>();
+  return results
+    .filter((r) => !EXCLUDE_DOMAINS.test(r.url))
+    .map((r) => {
+      try {
+        const u = new URL(r.url);
+        // ドメイン＋第1パスセグメントまでに丸める（サブページを除去）
+        const segments = u.pathname.split('/').filter(Boolean);
+        const path = segments.length > 0 ? `/${segments[0]}/` : '/';
+        return { url: u.origin + path, label: r.title.split(/[|｜\-–]/)[0].trim() || u.hostname };
+      } catch { return null; }
+    })
+    .filter((r): r is { url: string; label: string } => r !== null && !seen.has(r.url) && seen.add(r.url) !== undefined)
+    .map((r) => ({ category, type: 'generic' as const, label: r.label, url: r.url }));
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -42,8 +73,8 @@ export async function POST(req: Request) {
     return Response.json({ error: '作品名を入力してください' }, { status: 400 });
   }
 
-  // ── Jikan / Claude / Wikipedia を並列実行 ────────────────────────────
-  const [jikanMain, jikanExt, jikanRel, claudeRes] = await Promise.allSettled([
+  // ── Jikan / Claude / Brave を並列実行 ──────────────────────────────
+  const [jikanMain, jikanExt, jikanRel, claudeRes, braveGC] = await Promise.allSettled([
     // Jikan: メインアニメ情報（type を取るため）
     malId
       ? fetch(`https://api.jikan.moe/v4/anime/${malId}`).then((r) => r.json())
@@ -85,6 +116,8 @@ export async function POST(req: Request) {
         content: `アニメ作品「${name}」の日本語Wikipediaページ URLと主要キャラクター名を教えてください。`,
       }],
     }),
+    // Brave: ゲームセンター景品ページを検索
+    braveSearch(`${name} ゲームセンター 景品`, 6),
   ]);
 
   // ── 公式URL（Jikan external から取得） ─────────────────────────────
@@ -120,9 +153,10 @@ export async function POST(req: Request) {
             label: e.name,
             malId: e.mal_id,
             sources: [
-              ...(officialUrl ? [{ type: 'official' as const, label: '公式', url: officialUrl }] : []),
+              ...(officialUrl ? [{ type: 'official' as const, category: 'official' as const, label: '公式', url: officialUrl }] : []),
               {
                 type: 'ichiban-search' as const,
+                category: 'ichiban' as const,
                 label: '一番くじ',
                 url: `https://1kuji.com/products/search?word=${encodeURIComponent(e.name)}`,
               },
@@ -137,9 +171,10 @@ export async function POST(req: Request) {
         label: mainLabel,
         malId,
         sources: [
-          ...(officialUrl ? [{ type: 'official' as const, label: '公式', url: officialUrl }] : []),
+          ...(officialUrl ? [{ type: 'official' as const, category: 'official' as const, label: '公式', url: officialUrl }] : []),
           {
             type: 'ichiban-search' as const,
+            category: 'ichiban' as const,
             label: '一番くじ',
             url: `https://1kuji.com/products/search?word=${encodeURIComponent(mainTitle)}`,
           },
@@ -152,10 +187,11 @@ export async function POST(req: Request) {
   // ── ソース（全体用） ──────────────────────────────────────────────
   const sources: SourceConfig[] = [];
   if (officialUrl) {
-    sources.push({ type: 'official', label: '公式', url: officialUrl });
+    sources.push({ type: 'official', category: 'official', label: '公式', url: officialUrl });
   }
   sources.push({
     type: 'ichiban-search',
+    category: 'ichiban',
     label: '一番くじ',
     url: `https://1kuji.com/products/search?word=${encodeURIComponent(name.trim())}`,
   });
@@ -200,5 +236,19 @@ export async function POST(req: Request) {
     createdAt:  new Date().toISOString(),
   };
 
-  return Response.json(config);
+  // ── candidates（ユーザーが選択可能な追加候補） ─────────────────
+  const gcCandidates: SourceCandidate[] =
+    braveGC.status === 'fulfilled'
+      ? braveToCandidate(braveGC.value, 'game-center')
+      : [];
+
+  // コラボ RSS にフランチャイズ名をキーワードとして付与
+  const collabCandidates: SourceCandidate[] = COLLAB_RSS.map((c) => ({
+    ...c,
+    keywords: [name.trim(), 'コラボ'],
+  }));
+
+  const candidates: SourceCandidate[] = [...gcCandidates, ...collabCandidates];
+
+  return Response.json({ ...config, candidates });
 }

@@ -35,10 +35,11 @@ export async function scrapeOfficial(
     const text = title + ' ' + (cat ?? '');
 
     items.push({
-      id:          `${franchise.id}:official:${href}`,
-      source:      'official',
-      sourceLabel: source.label,
-      sourceUrl:   source.url,
+      id:             `${franchise.id}:official:${href}`,
+      source:         'official',
+      sourceLabel:    source.label,
+      sourceUrl:      source.url,
+      sourceCategory: source.category,
       title, url, date,
       dateTs:      parseDateTs(date),
       category:    cat,

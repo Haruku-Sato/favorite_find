@@ -60,9 +60,10 @@ export async function scrapeGeneric(
     const id = `${franchise.id}:generic:${url}`;
     items.push({
       id,
-      source:      source.type,
-      sourceLabel: source.label,
-      sourceUrl:   source.url,
+      source:         source.type,
+      sourceLabel:    source.label,
+      sourceUrl:      source.url,
+      sourceCategory: source.category,
       title,
       url,
       date,

@@ -32,9 +32,10 @@ export async function scrapeIchibanSearch(
     const url = href.startsWith('http') ? href : BASE + href;
     items.push({
       id:          `${franchise.id}:ichiban-search:${href}`,
-      source:      'ichiban',
-      sourceLabel: source.label,
-      sourceUrl:   source.url,
+      source:         'ichiban',
+      sourceLabel:    source.label,
+      sourceUrl:      source.url,
+      sourceCategory: source.category,
       title,
       url,
       date,

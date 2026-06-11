@@ -50,11 +50,12 @@ export async function scrapeIchiban(
   return Promise.all(
     basic.map(async ({ href, img, title, date }) => ({
       id:          `${franchise.id}:ichiban:${href}`,
-      source:      'ichiban',
-      sourceLabel: source.label,
-      sourceUrl:   source.url,
+      source:         'ichiban',
+      sourceLabel:    source.label,
+      sourceUrl:      source.url,
+      sourceCategory: source.category,
       title,
-      url:         href.startsWith('http') ? href : BASE + href,
+      url:            href.startsWith('http') ? href : BASE + href,
       date,
       dateTs:      parseDateTs(date),
       imageUrl:    img,

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import type { FranchiseConfig, CharacterDef, SourceConfig } from '@/lib/franchise';
+import type { FranchiseConfig, CharacterDef, SourceConfig, SourceCandidate, SourceCategory } from '@/lib/franchise';
+import { CATEGORY_LABEL } from '@/lib/franchise';
 
 interface Props {
   onAdd: (f: FranchiseConfig) => void;
@@ -23,8 +24,10 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   const [errMsg, setErrMsg]     = useState('');
 
   // 編集用ローカル state
-  const [editChars, setEditChars]     = useState<CharacterDef[]>([]);
-  const [editSources, setEditSources] = useState<SourceConfig[]>([]);
+  const [editChars, setEditChars]         = useState<CharacterDef[]>([]);
+  const [editSources, setEditSources]     = useState<SourceConfig[]>([]);
+  const [candidates, setCandidates]       = useState<SourceCandidate[]>([]);
+  const [selectedCands, setSelectedCands] = useState<Set<string>>(new Set());
 
   // サジェスト
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -115,10 +118,12 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
         body: JSON.stringify({ name: name.trim(), malId: selectedMalId }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const config: FranchiseConfig = await res.json();
+      const { candidates: cands = [], ...config } = await res.json() as FranchiseConfig & { candidates?: SourceCandidate[] };
       setDraft(config);
       setEditChars(config.characters);
       setEditSources(config.sources);
+      setCandidates(cands);
+      setSelectedCands(new Set()); // デフォルト未選択
       setStep('confirm');
     } catch (e) {
       setErrMsg(e instanceof Error ? e.message : '検索に失敗しました');
@@ -126,9 +131,19 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     }
   };
 
+  const toggleCand = (url: string) =>
+    setSelectedCands((prev) => {
+      const next = new Set(prev);
+      next.has(url) ? next.delete(url) : next.add(url);
+      return next;
+    });
+
   const handleAdd = () => {
     if (!draft) return;
-    onAdd({ ...draft, characters: editChars, sources: editSources });
+    const pickedSources: SourceConfig[] = candidates
+      .filter((c) => selectedCands.has(c.url))
+      .map((c) => ({ type: c.type, category: c.category, label: c.label, url: c.url, keywords: c.keywords }));
+    onAdd({ ...draft, characters: editChars, sources: [...editSources, ...pickedSources] });
     onClose();
   };
 
@@ -244,6 +259,42 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
                 </div>
               ))}
             </section>
+
+            {/* 追加候補（カテゴリ別チェックボックス） */}
+            {candidates.length > 0 && (
+              <section style={{ marginBottom: '1rem' }}>
+                <label style={sectionLabel}>追加するソースを選択</label>
+                {(['game-center', 'collab'] as SourceCategory[]).map((cat) => {
+                  const items = candidates.filter((c) => c.category === cat);
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={cat} style={{ marginBottom: '0.6rem' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--c-text3)', marginBottom: 4 }}>
+                        {CATEGORY_LABEL[cat]}
+                      </div>
+                      {items.map((c) => (
+                        <label key={c.url} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCands.has(c.url)}
+                            onChange={() => toggleCand(c.url)}
+                            style={{ accentColor: 'var(--c-blue)', width: 14, height: 14, flexShrink: 0 }}
+                          />
+                          <span style={{ fontSize: '0.82rem', color: 'var(--c-text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {c.label}
+                          </span>
+                          <a href={c.url} target="_blank" rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ fontSize: '0.7rem', color: 'var(--c-text3)', flexShrink: 0 }}>
+                            ↗
+                          </a>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })}
+              </section>
+            )}
 
             {/* キャラクター */}
             <section style={{ marginBottom: '1.25rem' }}>

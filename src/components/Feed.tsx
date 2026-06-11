@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { FeedItem } from '@/lib/scrapers';
-import type { FranchiseConfig } from '@/lib/franchise';
+import type { FranchiseConfig, SourceCategory } from '@/lib/franchise';
+import { CATEGORY_LABEL } from '@/lib/franchise';
 
 const SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
   official:         { bg: '#1a2f4a', color: '#58a6ff' },
@@ -37,7 +38,7 @@ interface Props {
 export default function Feed({ franchise, initialItems }: Props) {
   const [items, setItems]             = useState<FeedItem[]>(initialItems);
   const [seen, setSeen]               = useState<Set<string>>(new Set());
-  const [sourceFilter, setSource]     = useState('all');
+  const [categoryFilter, setCategory] = useState<SourceCategory | 'all'>('all');
   const [charaFilter, setChara]       = useState<string | null>(null);
   const [refreshing, setRefreshing]   = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -45,7 +46,7 @@ export default function Feed({ franchise, initialItems }: Props) {
   useEffect(() => {
     setSeen(loadSeen(franchise.id));
     setLastUpdated(new Date());
-    setSource('all');
+    setCategory('all');
     setChara(null);
   }, [franchise.id]);
 
@@ -79,7 +80,7 @@ export default function Feed({ franchise, initialItems }: Props) {
   };
 
   const filtered = items.filter((item) => {
-    if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
+    if (categoryFilter !== 'all' && item.sourceCategory !== categoryFilter) return false;
     if (charaFilter) {
       if (item.characters.length === 0) return false;
       if (!item.characters.includes(charaFilter)) return false;
@@ -88,9 +89,7 @@ export default function Feed({ franchise, initialItems }: Props) {
   });
 
   const unseenCount = filtered.filter((i) => !seen.has(i.id)).length;
-  const sourceLabel: Record<string, string> = {};
-  items.forEach((i) => { sourceLabel[i.source] = i.sourceLabel; });
-  const sources = ['all', ...Array.from(new Set(items.map((i) => i.source)))];
+  const categories = ['all', ...Array.from(new Set(items.map((i) => i.sourceCategory)))] as ('all' | SourceCategory)[];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--c-text)', fontFamily: 'system-ui, sans-serif' }}>
@@ -119,11 +118,11 @@ export default function Feed({ franchise, initialItems }: Props) {
             </div>
           </div>
 
-          {/* ソースフィルター */}
+          {/* カテゴリフィルター */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-            {sources.map((src) => (
-              <button key={src} onClick={() => setSource(src)} style={tabBtn(sourceFilter === src)}>
-                {src === 'all' ? 'すべて' : (sourceLabel[src] ?? src)}
+            {categories.map((cat) => (
+              <button key={cat} onClick={() => setCategory(cat)} style={tabBtn(categoryFilter === cat)}>
+                {cat === 'all' ? 'すべて' : CATEGORY_LABEL[cat]}
               </button>
             ))}
           </div>

@@ -6,10 +6,31 @@ export interface CharacterDef {
   color?: string;       // UI 表示色（任意）
 }
 
+export type SourceCategory = 'official' | 'game-center' | 'ichiban' | 'collab';
+
+export const CATEGORY_LABEL: Record<SourceCategory, string> = {
+  official:     '公式',
+  'game-center': 'ゲームセンター',
+  ichiban:      '一番くじ',
+  collab:       'コラボ',
+};
+
 export interface SourceConfig {
-  type: 'official' | 'ichiban' | 'ichiban-search' | 'generic';
+  type: 'official' | 'ichiban' | 'ichiban-search' | 'generic' | 'rss';
+  category: SourceCategory;
   label: string;
   url: string;
+  /** rss type のみ: このキーワードを含む記事だけ残す */
+  keywords?: string[];
+}
+
+/** セットアップ時にユーザーが選択できる候補ソース */
+export interface SourceCandidate {
+  category: SourceCategory;
+  type: SourceConfig['type'];
+  label: string;
+  url: string;
+  keywords?: string[];
 }
 
 /** 同一フランチャイズ内の個別エントリ（TVシリーズ・劇場版など） */
@@ -82,8 +103,8 @@ export const MADOKA_DEFAULT: FranchiseConfig = {
     { name: 'さやか',  keywords: ['さやか', '美樹'],   color: '#60a5fa' },
   ],
   sources: [
-    { type: 'official',       label: '公式',     url: 'https://www.madoka-magica.com' },
-    { type: 'ichiban',        label: '一番くじ',  url: 'https://1kuji.com/characters/85' },
+    { type: 'official',       category: 'official', label: '公式',       url: 'https://www.madoka-magica.com' },
+    { type: 'ichiban',        category: 'ichiban',  label: '一番くじ',    url: 'https://1kuji.com/characters/85' },
   ],
   createdAt: new Date().toISOString(),
 };

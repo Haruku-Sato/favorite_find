@@ -1,4 +1,4 @@
-import type { FranchiseConfig, SourceConfig } from '@/lib/franchise';
+import type { FranchiseConfig, SourceConfig, SourceCategory } from '@/lib/franchise';
 import { detectCharacters } from '@/lib/franchise';
 
 // ── FeedItem（汎用） ─────────────────────────────────────
@@ -8,6 +8,7 @@ export interface FeedItem {
   source: string;
   sourceLabel: string;
   sourceUrl: string;
+  sourceCategory: SourceCategory;
   title: string;
   url: string;
   date: string | null;
@@ -36,6 +37,7 @@ import { scrapeOfficial }     from './official';
 import { scrapeIchiban }      from './ichiban';
 import { scrapeIchibanSearch } from './ichibanSearch';
 import { scrapeGeneric }      from './generic';
+import { scrapeRss }          from './rss';
 
 async function scrapeSource(
   source: SourceConfig,
@@ -48,6 +50,8 @@ async function scrapeSource(
       return scrapeIchiban(source, franchise);
     case 'ichiban-search':
       return scrapeIchibanSearch(source, franchise);
+    case 'rss':
+      return scrapeRss(source, franchise);
     case 'generic':
     default:
       return scrapeGeneric(source, franchise);
@@ -59,9 +63,14 @@ export async function scrapeAll(franchise: FranchiseConfig): Promise<FeedItem[]>
     franchise.sources.map((src) => scrapeSource(src, franchise))
   );
 
-  const items = results.flatMap((r) =>
-    r.status === 'fulfilled' ? r.value : []
-  );
+  const seen = new Set<string>();
+  const items = results
+    .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
+    .filter((item) => {
+      if (seen.has(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    });
 
   return items.sort((a, b) => b.dateTs - a.dateTs);
 }
