@@ -66,11 +66,32 @@ export function detectCharacters(
 
 const STORAGE_KEY = 'favorite_find_franchises';
 
+// type からカテゴリを推定（category 未設定の旧データ移行用）
+function inferCategory(type: SourceConfig['type']): SourceCategory {
+  if (type === 'ichiban' || type === 'ichiban-search') return 'ichiban';
+  if (type === 'rss') return 'collab';
+  return 'official';
+}
+
+// 旧バージョンで保存された franchise を現行スキーマに補正
+function migrateFranchise(f: FranchiseConfig): FranchiseConfig {
+  const fix = (s: SourceConfig): SourceConfig => ({
+    ...s,
+    category: s.category ?? inferCategory(s.type),
+  });
+  return {
+    ...f,
+    sources: (f.sources ?? []).map(fix),
+    entries: f.entries?.map((e) => ({ ...e, sources: (e.sources ?? []).map(fix) })),
+  };
+}
+
 export function loadFranchises(): FranchiseConfig[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list = raw ? (JSON.parse(raw) as FranchiseConfig[]) : [];
+    return list.map(migrateFranchise);
   } catch {
     return [];
   }

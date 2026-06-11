@@ -326,7 +326,7 @@ export default function Page() {
           情報を取得中…
         </div>
       ) : active && currentItems ? (
-        <Feed franchise={active} initialItems={currentItems} />
+        <Feed key={scrapeKey(activeId, activeEntryId)} franchise={active} initialItems={currentItems} />
       ) : active ? (
         <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--c-text3)' }}>読み込み中…</div>
       ) : null}
