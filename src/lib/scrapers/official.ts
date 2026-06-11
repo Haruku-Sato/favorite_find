@@ -47,11 +47,22 @@ export async function scrapeOfficial(
     });
   });
 
-  // セレクタがマッチしなかった場合は generic にフォールバック
-  if (items.length === 0) {
-    const { scrapeGeneric } = await import('./generic');
-    return scrapeGeneric(source, franchise);
+  if (items.length > 0) return items;
+
+  // ── A) RSS 自動検出 ─────────────────────────────────────
+  // <link rel="alternate" type="application/rss+xml"> 等があれば RSS を使う
+  const feedHref =
+    $('link[type="application/rss+xml"], link[type="application/atom+xml"]').first().attr('href');
+  if (feedHref) {
+    try {
+      const feedUrl = new URL(feedHref, source.url).href;
+      const { scrapeRss } = await import('./rss');
+      const rssItems = await scrapeRss({ ...source, type: 'rss', url: feedUrl }, franchise);
+      if (rssItems.length > 0) return rssItems;
+    } catch { /* RSS 失敗時は generic へ */ }
   }
 
-  return items;
+  // ── 汎用スクレイパーにフォールバック ──
+  const { scrapeGeneric } = await import('./generic');
+  return scrapeGeneric(source, franchise);
 }

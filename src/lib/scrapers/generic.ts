@@ -27,39 +27,28 @@ export async function scrapeGeneric(
   if (!res.ok) throw new Error(`generic: HTTP ${res.status}`);
 
   const $ = cheerio.load(await res.text());
-  const base = new URL(source.url).origin;
   const items: FeedItem[] = [];
   const seen = new Set<string>();
 
-  $(NEWS_SELECTORS).each((_, el) => {
-    const $el = $(el);
+  // 1件分を items に追加する共通処理
+  const push = (rawTitle: string, href: string, dateText: string) => {
+    const title = rawTitle.trim().replace(/\s+/g, ' ');
+    if (!title || title.length < 5 || title.length > 200 || !href) return;
 
-    // タイトル候補
-    const title = (
-      $el.find('h1, h2, h3, h4, .title, .subject').first().text() ||
-      $el.find('a').first().text()
-    ).trim().replace(/\s+/g, ' ');
-
-    if (!title || title.length < 5 || title.length > 200) return;
-
-    // URL
-    const href = $el.find('a').first().attr('href') ?? '';
-    if (!href) return;
-    const url = href.startsWith('http') ? href : (href.startsWith('/') ? base + href : source.url);
+    // href をページURL基準で絶対URL化（相対・スラッシュ有無を吸収）
+    let url: string;
+    try { url = new URL(href, source.url).href; } catch { return; }
 
     if (seen.has(url)) return;
     seen.add(url);
 
-    // 日付
-    const text = $el.text();
-    const dateMatch = text.match(DATE_RE);
+    const dateMatch = dateText.match(DATE_RE);
     const date = dateMatch
       ? `${dateMatch[1]}年${dateMatch[2]}月${dateMatch[3]}日`
       : null;
 
-    const id = `${franchise.id}:generic:${url}`;
     items.push({
-      id,
+      id:             `${franchise.id}:generic:${url}`,
       source:         source.type,
       sourceLabel:    source.label,
       sourceUrl:      source.url,
@@ -70,7 +59,29 @@ export async function scrapeGeneric(
       dateTs:      parseDateTs(date),
       characters:  detectCharacters(title, franchise.characters),
     });
+  };
+
+  // ── パターンA: li / article 系コンテナ ──
+  $(NEWS_SELECTORS).each((_, el) => {
+    const $el   = $(el);
+    const title =
+      $el.find('h1, h2, h3, h4, .title, .subject').first().text() ||
+      $el.find('a').first().text();
+    push(title, $el.find('a').first().attr('href') ?? '', $el.text());
   });
+
+  // ── パターンB: dl/dt/dd 形式（日本のアニメ公式に多い） ──
+  if (items.length === 0) {
+    $('dl').each((_, dl) => {
+      $(dl).children('dd').each((_, dd) => {
+        const $dd  = $(dd);
+        const $a   = $dd.find('a').first();
+        const date = $dd.prevAll('dt').first().text();
+        const title = ($dd.find('.title').first().text() || $a.text());
+        push(title, $a.attr('href') ?? '', date + ' ' + $dd.text());
+      });
+    });
+  }
 
   return items.slice(0, 30); // 最大30件
 }

@@ -17,6 +17,20 @@ interface Suggestion {
   malId: number;
 }
 
+/** シーズン・劇場版などの違いを吸収して同一作品をまとめるためのキー */
+function baseKey(title: string): string {
+  return title
+    .replace(/劇場版|総集編|前編|後編|特別編|完結編|OVA|OAD|ONA/gi, '')
+    .replace(/第?\s*\d+\s*期/g, '')
+    .replace(/(Season|シーズン)\s*\d+/gi, '')
+    .replace(/\b(2nd|3rd|4th|second|third|fourth)\b/gi, '')
+    .replace(/[ⅠⅡⅢⅣⅤ]+$/, '')
+    .replace(/\s+(II|III|IV|V)$/i, '')
+    .replace(/[\s:：・!！?？.。、,，\-–—~〜]+/g, '')
+    .trim()
+    .toLowerCase();
+}
+
 export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   const [name, setName]         = useState('');
   const [step, setStep]         = useState<Step>('input');
@@ -54,11 +68,20 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
           `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(trimmed)}&limit=10&sfw=true`,
         );
         const json = await res.json();
-        const items: Suggestion[] = (json.data ?? []).map((a: Record<string, unknown>) => ({
+        const mapped: Suggestion[] = (json.data ?? []).map((a: Record<string, unknown>) => ({
           title: (a.title_japanese as string) || (a.title as string) || '',
           thumb: (a.images as Record<string, Record<string, string>>)?.jpg?.small_image_url ?? '',
           malId: (a.mal_id as number) ?? 0,
         })).filter((s: Suggestion) => s.title);
+
+        // 同一作品（シーズン・劇場版違い）を1件に集約。先頭＝関連度順で最初のものを残す
+        const seenKeys = new Set<string>();
+        const items = mapped.filter((s) => {
+          const k = baseKey(s.title);
+          if (seenKeys.has(k)) return false;
+          seenKeys.add(k);
+          return true;
+        });
         setSuggestions(items);
         setSuggFocus(-1);
       } catch {
@@ -157,7 +180,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ background: 'var(--c-bg2)', border: '1px solid var(--c-border)', borderRadius: 12, padding: '1.5rem', width: 480, maxWidth: '92vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
+        style={{ background: 'var(--c-bg2)', border: '1px solid var(--c-border)', borderRadius: 12, padding: '1.5rem', width: 600, maxWidth: '94vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
       >
         <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--c-text)' }}>作品を追加</h2>
 
@@ -327,7 +350,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)',
-  borderRadius: 6, padding: '8px 12px', color: 'var(--c-text)', fontSize: '0.9rem',
+  borderRadius: 8, padding: '12px 16px', color: 'var(--c-text)', fontSize: '1.05rem',
   outline: 'none', boxSizing: 'border-box',
 };
 const ghostBtn: React.CSSProperties = {

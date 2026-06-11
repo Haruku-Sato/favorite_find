@@ -89,7 +89,16 @@ export default function Feed({ franchise, initialItems }: Props) {
   });
 
   const unseenCount = filtered.filter((i) => !seen.has(i.id)).length;
-  const categories = ['all', ...Array.from(new Set(items.map((i) => i.sourceCategory)))] as ('all' | SourceCategory)[];
+  // カテゴリは「登録ソース」基準で常設（記事0件でもタブを出す）。記事のみのカテゴリも一応含める
+  const categories = ['all', ...Array.from(new Set([
+    ...franchise.sources.map((s) => s.category),
+    ...items.map((i) => i.sourceCategory),
+  ]))] as ('all' | SourceCategory)[];
+
+  // 選択中カテゴリに紐づく登録ソース（フォールバック表示用）
+  const categorySources = categoryFilter === 'all'
+    ? []
+    : franchise.sources.filter((s) => s.category === categoryFilter);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--c-text)', fontFamily: 'system-ui, sans-serif' }}>
@@ -149,9 +158,35 @@ export default function Feed({ franchise, initialItems }: Props) {
       {/* ── フィード本体 ── */}
       <main style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem' }}>
         {filtered.length === 0 ? (
-          <p style={{ color: 'var(--c-text3)', textAlign: 'center', marginTop: '4rem' }}>
-            {charaFilter ? `${charaFilter}の情報が見つかりませんでした` : '情報が見つかりませんでした'}
-          </p>
+          // 記事0件: 登録ソースがあれば導線カードを出す（公式タブ常設のフォールバック）
+          categorySources.length > 0 && !charaFilter ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+              <p style={{ color: 'var(--c-text3)', fontSize: '0.85rem', margin: 0 }}>
+                自動取得できる記事が見つかりませんでした。サイトを直接確認できます：
+              </p>
+              {categorySources.map((s, i) => (
+                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c-bg2)',
+                    border: '1px solid var(--c-border)', borderRadius: 10, padding: '0.9rem 1rem',
+                    textDecoration: 'none', color: 'inherit',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-bg3)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--c-bg2)')}
+                >
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{s.label}</span>
+                  <span style={{ color: 'var(--c-text3)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.url}
+                  </span>
+                  <span style={{ marginLeft: 'auto', color: 'var(--c-text3)' }}>↗</span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--c-text3)', textAlign: 'center', marginTop: '4rem' }}>
+              {charaFilter ? `${charaFilter}の情報が見つかりませんでした` : '情報が見つかりませんでした'}
+            </p>
+          )
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {filtered.map((item) => {

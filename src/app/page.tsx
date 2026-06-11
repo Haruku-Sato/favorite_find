@@ -21,6 +21,7 @@ export default function Page() {
   const [showModal, setShowModal]         = useState(false);
   const [loading, setLoading]             = useState(false);
   const [openDropdown, setOpenDropdown]   = useState<string | null>(null); // 開いてるドロップダウンの franchiseId
+  const [dropPos, setDropPos]             = useState<{ left: number; top: number } | null>(null);
   const dropdownRef                       = useRef<HTMLDivElement>(null);
   const { theme, toggle }                 = useTheme();
 
@@ -149,7 +150,13 @@ export default function Page() {
                   {/* ▾ ディレクトリ展開ボタン（エントリがある場合のみ） */}
                   {hasEntries && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setOpenDropdown(isDropOpen ? null : f.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isDropOpen) { setOpenDropdown(null); return; }
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setDropPos({ left: r.left, top: r.bottom + 4 });
+                        setOpenDropdown(f.id);
+                      }}
                       style={{
                         background: isActive ? 'var(--c-bg4)' : 'transparent',
                         border: isActive ? '1px solid var(--c-border)' : '1px solid transparent',
@@ -182,10 +189,10 @@ export default function Page() {
                     </button>
                   )}
 
-                  {/* ドロップダウンメニュー */}
-                  {isDropOpen && hasEntries && (
+                  {/* ドロップダウンメニュー（position:fixed でタブバーの overflow を回避） */}
+                  {isDropOpen && hasEntries && dropPos && (
                     <div style={{
-                      position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+                      position: 'fixed', top: dropPos.top, left: dropPos.left,
                       background: 'var(--c-bg2)', border: '1px solid var(--c-border)',
                       borderRadius: 8, minWidth: 200, zIndex: 50,
                       boxShadow: '0 8px 24px rgba(0,0,0,0.4)', overflow: 'hidden',

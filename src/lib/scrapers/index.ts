@@ -63,16 +63,33 @@ export async function scrapeAll(franchise: FranchiseConfig): Promise<FeedItem[]>
     franchise.sources.map((src) => scrapeSource(src, franchise))
   );
 
-  const seen = new Set<string>();
-  const items = results
+  // URL 重複除去
+  const seenUrl = new Set<string>();
+  const byUrl = results
     .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
     .filter((item) => {
-      if (seen.has(item.url)) return false;
-      seen.add(item.url);
+      if (seenUrl.has(item.url)) return false;
+      seenUrl.add(item.url);
       return true;
     });
 
-  return items.sort((a, b) => b.dateTs - a.dateTs);
+  // 新しい順にしてからタイトル類似で集約（各クラスタの最新1件を残す）
+  const sorted = byUrl.sort((a, b) => b.dateTs - a.dateTs);
+  const seenTitle = new Set<string>();
+  return sorted.filter((item) => {
+    const key = normalizeTitle(item.title);
+    if (!key || seenTitle.has(key)) return key ? false : true;
+    seenTitle.add(key);
+    return true;
+  });
+}
+
+// タイトル類似判定用の正規化（記号・空白・全角半角ゆらぎを吸収）
+function normalizeTitle(title: string): string {
+  return title
+    .normalize('NFKC')
+    .replace(/[\s「」『』【】（）()［］\[\]！!？?、。,.・:：;；〜~\-–—…♪★☆＆&]/g, '')
+    .toLowerCase();
 }
 
 // detectCharacters を再エクスポート（後方互換）
