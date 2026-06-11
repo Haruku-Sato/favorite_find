@@ -93,7 +93,7 @@ export async function scrapeGeneric(
   // サイト固有クラスに依存せず、「日付を持つリンク項目」をニュースとみなす。
   // ナビ等の誤検出を避けるため日付の存在を必須にする。
   if (items.length === 0) {
-    $('li, article, dd').each((_, el) => {
+    $('li, article, dd, tr').each((_, el) => {
       const $el = $(el);
       const $a  = $el.find('a[href]').first();
       if (!$a.length) return;
