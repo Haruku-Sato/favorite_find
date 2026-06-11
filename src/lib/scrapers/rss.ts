@@ -17,7 +17,7 @@ export async function scrapeRss(
     .filter((item) => {
       if (kws.length === 0) return true;
       const text = ((item.title ?? '') + ' ' + (item.contentSnippet ?? '')).toLowerCase();
-      return kws.some((kw) => text.includes(kw));
+      return kws.every((kw) => text.includes(kw));
     })
     .slice(0, 30).map((item) => {
     const title = item.title?.trim() ?? '';
