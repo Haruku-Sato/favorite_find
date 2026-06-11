@@ -17,16 +17,25 @@ interface Suggestion {
   malId: number;
 }
 
-/** シーズン・劇場版などの違いを吸収して同一作品をまとめるためのキー */
+/** シーズン・劇場版などの違いを吸収して同一作品をまとめるためのキー。
+ *  「劇場版」「THE MOVIE」「第N期」などのマーカー以降は丸ごと切り落とし、
+ *  本編タイトル部分だけを比較する。 */
 function baseKey(title: string): string {
-  return title
-    .replace(/劇場版|総集編|前編|後編|特別編|完結編|OVA|OAD|ONA/gi, '')
-    .replace(/第?\s*\d+\s*期/g, '')
-    .replace(/(Season|シーズン)\s*\d+/gi, '')
-    .replace(/\b(2nd|3rd|4th|second|third|fourth)\b/gi, '')
-    .replace(/[ⅠⅡⅢⅣⅤ]+$/, '')
-    .replace(/\s+(II|III|IV|V)$/i, '')
-    .replace(/[\s:：・!！?？.。、,，\-–—~〜]+/g, '')
+  // マーカーが最初に出現した位置で打ち切る
+  const markers = [
+    /劇場版/, /the\s*movie/i, /\bmovie\b/i, /総集編/, /特別編/, /完結編/,
+    /第?\s*\d+\s*期/, /(?:season|シーズン)\s*\d+/i, /\bova\b/i, /\boad\b/i, /\bona\b/i,
+    /\s+(?:II|III|IV|V)\b/, /[ⅡⅢⅣⅤ]/,
+  ];
+  let cut = title;
+  for (const re of markers) {
+    const m = cut.match(re);
+    if (m && m.index !== undefined) cut = cut.slice(0, m.index);
+  }
+  // 副題（〜…〜 / : 以降）も落として記号・空白を除去
+  return cut
+    .split(/[〜~:：]/)[0]
+    .replace(/[\s・!！?？.。、,，\-–—…★☆＆&]+/g, '')
     .trim()
     .toLowerCase();
 }
@@ -65,7 +74,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(trimmed)}&limit=10&sfw=true`,
+          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(trimmed)}&limit=20&sfw=true`,
         );
         const json = await res.json();
         const mapped: Suggestion[] = (json.data ?? []).map((a: Record<string, unknown>) => ({
@@ -204,8 +213,8 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
               {suggestions.length > 0 && (
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0,
-                  background: 'var(--c-bg3)', border: '1px solid var(--c-border)', borderRadius: 6,
-                  zIndex: 20, overflow: 'hidden',
+                  background: 'var(--c-bg3)', border: '1px solid var(--c-border)', borderRadius: 8,
+                  zIndex: 20, maxHeight: '50vh', overflowY: 'auto',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                 }}>
                   {suggestions.map((s, i) => (
@@ -214,21 +223,21 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
                       onMouseDown={() => selectSuggestion(s)}
                       onMouseEnter={() => setSuggFocus(i)}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        width: '100%', padding: '7px 12px',
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        width: '100%', padding: '12px 16px',
                         background: i === suggFocus ? 'var(--c-bg4)' : 'transparent',
                         border: 'none', borderBottom: i < suggestions.length - 1 ? '1px solid var(--c-bg4)' : 'none',
-                        color: 'var(--c-text)', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left',
+                        color: 'var(--c-text)', cursor: 'pointer', fontSize: '1rem', textAlign: 'left',
                       }}
                     >
                       {s.thumb && (
                         <img
                           src={s.thumb}
                           alt=""
-                          style={{ width: 24, height: 34, objectFit: 'cover', borderRadius: 2, flexShrink: 0 }}
+                          style={{ width: 44, height: 62, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
                         />
                       )}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.4 }}>
                         {s.title}
                       </span>
                     </button>

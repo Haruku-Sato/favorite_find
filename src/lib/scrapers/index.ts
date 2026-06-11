@@ -22,12 +22,14 @@ export interface FeedItem {
 
 export function parseDateTs(raw: string | null): number {
   if (!raw) return 0;
-  const dot = raw.match(/(\d{4})\.(\d{2})\.(\d{2})/);
-  if (dot) return new Date(`${dot[1]}-${dot[2]}-${dot[3]}`).getTime();
+  const p = (s: string) => s.padStart(2, '0');
   const jp = raw.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-  if (jp) return new Date(`${jp[1]}-${jp[2].padStart(2,'0')}-${jp[3].padStart(2,'0')}`).getTime();
+  if (jp) return new Date(`${jp[1]}-${p(jp[2])}-${p(jp[3])}`).getTime();
+  // 区切りは . - / 年月、前後の空白も許容（例: "2024. 05. 15", "2026-06-09", "2026/6/9"）
+  const g = raw.match(/(\d{4})\s*[.\-/年]\s*(\d{1,2})\s*[.\-/月]\s*(\d{1,2})/);
+  if (g) return new Date(`${g[1]}-${p(g[2])}-${p(g[3])}`).getTime();
   const jpMon = raw.match(/(\d{4})年(\d{1,2})月/);
-  if (jpMon) return new Date(`${jpMon[1]}-${jpMon[2].padStart(2,'0')}-01`).getTime();
+  if (jpMon) return new Date(`${jpMon[1]}-${p(jpMon[2])}-01`).getTime();
   return 0;
 }
 

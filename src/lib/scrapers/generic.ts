@@ -3,8 +3,8 @@ import type { FranchiseConfig, SourceConfig } from '@/lib/franchise';
 import { detectCharacters } from '@/lib/franchise';
 import { type FeedItem, parseDateTs } from './index';
 
-// 日付パターン（日本語サイトで一般的なもの）
-const DATE_RE = /(\d{4})[.\-年](\d{1,2})[.\-月](\d{1,2})/;
+// 日付パターン（区切り . - / 年月 と前後空白を許容）
+const DATE_RE = /(\d{4})\s*[.\-/年]\s*(\d{1,2})\s*[.\-/月]\s*(\d{1,2})/;
 
 // ニュース系コンテナによく使われるクラス名
 const NEWS_SELECTORS = [
@@ -15,6 +15,10 @@ const NEWS_SELECTORS = [
   'article', '.news-item', '.news_item', '.newsItem',
   '.information li', '.update li',
 ].join(', ');
+
+// ヒューリスティック用: タイトル／日付らしき要素
+const TITLE_SEL = 'h1,h2,h3,h4,h5,h6,[class*="title" i],[class*="ttl" i],[class*="subject" i]';
+const DATE_SEL  = 'time,[class*="date" i]';
 
 export async function scrapeGeneric(
   source: SourceConfig,
@@ -44,7 +48,7 @@ export async function scrapeGeneric(
 
     const dateMatch = dateText.match(DATE_RE);
     const date = dateMatch
-      ? `${dateMatch[1]}年${dateMatch[2]}月${dateMatch[3]}日`
+      ? `${dateMatch[1]}年${Number(dateMatch[2])}月${Number(dateMatch[3])}日`
       : null;
 
     items.push({
@@ -80,6 +84,29 @@ export async function scrapeGeneric(
         const title = ($dd.find('.title').first().text() || $a.text());
         push(title, $a.attr('href') ?? '', date + ' ' + $dd.text());
       });
+    });
+  }
+
+  // ── パターンC: ヒューリスティック（リンク＋日付を含む繰り返し要素） ──
+  // サイト固有クラスに依存せず、「日付を持つリンク項目」をニュースとみなす。
+  // ナビ等の誤検出を避けるため日付の存在を必須にする。
+  if (items.length === 0) {
+    $('li, article, dd').each((_, el) => {
+      const $el = $(el);
+      const $a  = $el.find('a[href]').first();
+      if (!$a.length) return;
+
+      // 日付: <time datetime> / .date 系 / 本文中の日付パターン
+      const $date = $el.find(DATE_SEL).first();
+      const dateText = $date.attr('datetime') || $date.text() || ($el.text().match(DATE_RE)?.[0] ?? '');
+      if (!DATE_RE.test(dateText) && !/\d{4}-\d{2}-\d{2}/.test(dateText)) return;
+
+      // タイトル: title/ttl/見出し系 → リンクテキスト → 日付を除いた本文
+      let title = $el.find(TITLE_SEL).first().text().trim();
+      if (!title) title = $a.text().trim();
+      if (!title) title = $el.clone().find(DATE_SEL).remove().end().text().trim();
+
+      push(title, $a.attr('href') ?? '', dateText);
     });
   }
 
