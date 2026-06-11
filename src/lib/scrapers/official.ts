@@ -62,6 +62,13 @@ export async function scrapeOfficial(
     } catch { /* RSS 失敗時は generic へ */ }
   }
 
+  // ── B) WordPress REST API 自動検出（JSで動的に記事を読むサイト向け） ──
+  try {
+    const { scrapeWordpress } = await import('./wordpress');
+    const wpItems = await scrapeWordpress(source, franchise, html);
+    if (wpItems && wpItems.length > 0) return wpItems;
+  } catch { /* 失敗時は generic へ */ }
+
   // ── 汎用スクレイパーにフォールバック ──
   const { scrapeGeneric } = await import('./generic');
   return scrapeGeneric(source, franchise);

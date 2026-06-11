@@ -172,8 +172,8 @@ export default function Page() {
                     </button>
                   )}
 
-                  {/* エントリがない場合の削除ボタン */}
-                  {!hasEntries && franchises.length > 1 && (
+                  {/* エントリがない場合の削除ボタン（最後の1件も削除可。全削除で初期画面へ） */}
+                  {!hasEntries && (
                     <button
                       onClick={() => handleRemove(f.id)}
                       title="削除"
@@ -219,8 +219,8 @@ export default function Page() {
                           </span>
                         </button>
                       ))}
-                      {/* 削除 */}
-                      {franchises.length > 1 && (
+                      {/* 削除（最後の1件も削除可） */}
+                      {(
                         <>
                           <div style={{ height: 1, background: 'var(--c-border)', margin: '2px 0' }} />
                           <button
