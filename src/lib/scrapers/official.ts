@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import type { FranchiseConfig, SourceConfig } from '@/lib/franchise';
 import { detectCharacters } from '@/lib/franchise';
-import { type FeedItem, parseDateTs } from './index';
+import { type FeedItem, parseDateTs, isBotBlock, noticeItem } from './index';
 
 // madoka-magica.com の固有セレクタ（他の公式サイトは generic.ts にフォールバック）
 const MADOKA_BASE = 'https://www.madoka-magica.com';
@@ -14,9 +14,13 @@ export async function scrapeOfficial(
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
     next: { revalidate: 3600 },
   });
-  if (!res.ok) throw new Error(`official: HTTP ${res.status}`);
 
   const html = await res.text();
+
+  // botブロック（Cloudflare等）はここで打ち切って通知を返す
+  if (isBotBlock(res.status, html)) return [noticeItem(source, franchise, 'bot-blocked')];
+  if (!res.ok) throw new Error(`official: HTTP ${res.status}`);
+
   const $ = cheerio.load(html);
 
   // まどマギ公式専用セレクタ

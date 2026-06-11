@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import type { FranchiseConfig, SourceConfig } from '@/lib/franchise';
 import { detectCharacters } from '@/lib/franchise';
-import { type FeedItem, parseDateTs } from './index';
+import { type FeedItem, parseDateTs, isBotBlock, noticeItem } from './index';
 
 // 日付パターン（区切り . - / 年月 と前後空白を許容）
 const DATE_RE = /(\d{4})\s*[.\-/年]\s*(\d{1,2})\s*[.\-/月]\s*(\d{1,2})/;
@@ -28,9 +28,11 @@ export async function scrapeGeneric(
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
     next: { revalidate: 3600 },
   });
+  const rawHtml = await res.text();
+  if (isBotBlock(res.status, rawHtml)) return [noticeItem(source, franchise, 'bot-blocked')];
   if (!res.ok) throw new Error(`generic: HTTP ${res.status}`);
 
-  const $ = cheerio.load(await res.text());
+  const $ = cheerio.load(rawHtml);
   const items: FeedItem[] = [];
   const seen = new Set<string>();
 

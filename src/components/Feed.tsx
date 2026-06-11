@@ -79,7 +79,14 @@ export default function Feed({ franchise, initialItems }: Props) {
     finally { setRefreshing(false); }
   };
 
-  const filtered = items.filter((item) => {
+  // 通知（botブロック等）と実記事を分離
+  const realItems   = items.filter((i) => !i.notice);
+  const noticeItems = items.filter((i) => i.notice);
+  const blockedCategories = new Set(
+    noticeItems.filter((i) => i.notice === 'bot-blocked').map((i) => i.sourceCategory),
+  );
+
+  const filtered = realItems.filter((item) => {
     if (categoryFilter !== 'all' && item.sourceCategory !== categoryFilter) return false;
     if (charaFilter) {
       if (item.characters.length === 0) return false;
@@ -92,13 +99,15 @@ export default function Feed({ franchise, initialItems }: Props) {
   // カテゴリは「登録ソース」基準で常設（記事0件でもタブを出す）。記事のみのカテゴリも一応含める
   const categories = ['all', ...Array.from(new Set([
     ...franchise.sources.map((s) => s.category),
-    ...items.map((i) => i.sourceCategory),
+    ...realItems.map((i) => i.sourceCategory),
   ]))] as ('all' | SourceCategory)[];
 
   // 選択中カテゴリに紐づく登録ソース（フォールバック表示用）
   const categorySources = categoryFilter === 'all'
     ? []
     : franchise.sources.filter((s) => s.category === categoryFilter);
+  // 選択中カテゴリが botブロックされているか
+  const categoryBlocked = categoryFilter !== 'all' && blockedCategories.has(categoryFilter);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--c-bg)', color: 'var(--c-text)', fontFamily: 'system-ui, sans-serif' }}>
@@ -162,7 +171,9 @@ export default function Feed({ franchise, initialItems }: Props) {
           categorySources.length > 0 && !charaFilter ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
               <p style={{ color: 'var(--c-text3)', fontSize: '0.85rem', margin: 0 }}>
-                自動取得できる記事が見つかりませんでした。サイトを直接確認できます：
+                {categoryBlocked
+                  ? '🤖 botブロックです、ごめんなさい！このサイトは自動アクセスを拒否しているため記事を取得できません。サイトを直接確認できます：'
+                  : '自動取得できる記事が見つかりませんでした。サイトを直接確認できます：'}
               </p>
               {categorySources.map((s, i) => (
                 <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"

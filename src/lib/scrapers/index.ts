@@ -16,6 +16,34 @@ export interface FeedItem {
   category?: string;
   imageUrl?: string;
   characters: string[];  // 該当キャラ名のリスト（[] = 全体共通）
+  notice?: 'bot-blocked'; // 記事ではなく状態通知（botブロック等）
+}
+
+// ── botブロック（Cloudflare等）の検出 ─────────────────────
+export function isBotBlock(status: number, html: string): boolean {
+  if (status === 403 || status === 429 || status === 503) return true;
+  return /Just a moment\.\.\.|challenge-platform|cf[-_]chl|Enable JavaScript and cookies to continue|_cf_chl_opt/i.test(html);
+}
+
+/** 記事の代わりに状態を伝えるための通知 FeedItem を作る */
+export function noticeItem(
+  source: SourceConfig,
+  franchise: FranchiseConfig,
+  notice: 'bot-blocked',
+): FeedItem {
+  return {
+    id:             `${franchise.id}:notice:${notice}:${source.url}`,
+    source:         source.type,
+    sourceLabel:    source.label,
+    sourceUrl:      source.url,
+    sourceCategory: source.category,
+    title:          '',
+    url:            source.url,
+    date:           null,
+    dateTs:         0,
+    characters:     [],
+    notice,
+  };
 }
 
 // ── 日付パース ────────────────────────────────────────────

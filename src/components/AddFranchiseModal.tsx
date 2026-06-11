@@ -212,9 +212,9 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
               {/* サジェストドロップダウン */}
               {suggestions.length > 0 && (
                 <div style={{
-                  position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0,
+                  marginTop: 8,
                   background: 'var(--c-bg3)', border: '1px solid var(--c-border)', borderRadius: 8,
-                  zIndex: 20, maxHeight: '50vh', overflowY: 'auto',
+                  maxHeight: '60vh', overflowY: 'auto',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                 }}>
                   {suggestions.map((s, i) => (
