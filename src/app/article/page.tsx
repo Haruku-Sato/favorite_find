@@ -78,7 +78,7 @@ function ArticleDetail() {
             {data.summary ? (
               <div style={{ background: 'var(--c-bg2)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1rem 1.1rem', marginBottom: '1.25rem' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--c-accent)', fontWeight: 700, marginBottom: 6 }}>✨ AI要約</div>
-                <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.7, whiteSpace: 'pre-line' }}>{data.summary}</p>
+                <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.7, whiteSpace: 'pre-line' }}>{data.summary.replace(/\\n/g, '\n')}</p>
               </div>
             ) : data.summaryError ? (
               <div style={{ background: 'var(--c-bg2)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '0.8rem 1rem', marginBottom: '1.25rem', color: 'var(--c-text3)', fontSize: '0.82rem' }}>

@@ -123,7 +123,8 @@ export async function POST(req: Request) {
     if (toolUse?.type === 'tool_use') {
       const o = toolUse.input as Partial<SummarizeResult['fields']> & { summary?: string };
       result = {
-        summary: o.summary ?? '',
+        // Claude がリテラルの "\n" を返すことがあるので実際の改行に変換
+        summary: (o.summary ?? '').replace(/\\n/g, '\n').trim(),
         body,
         ogImage,
         blocked,
