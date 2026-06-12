@@ -98,10 +98,11 @@ const INCLUDE_RELATIONS = new Set([
 ]);
 
 export async function POST(req: Request) {
-  const { name, malId } = await req.json() as { name: string; malId?: number };
+  const { name, malId, kind = 'anime' } = await req.json() as { name: string; malId?: number; kind?: 'anime' | 'game' };
   if (!name?.trim()) {
     return Response.json({ error: '作品名を入力してください' }, { status: 400 });
   }
+  const isGame = kind === 'game';
 
   // ── Jikan / Claude / Brave を並列実行 ──────────────────────────────
   const [jikanMain, jikanExt, jikanRel, claudeRes, braveGC] = await Promise.allSettled([
@@ -151,7 +152,7 @@ export async function POST(req: Request) {
       tool_choice: { type: 'tool', name: 'franchise_info' },
       messages: [{
         role: 'user',
-        content: `アニメ作品「${name}」について、正式名称・日本語公式サイトURL・日本語WikipediaページURL・主要キャラクター名を教えてください。略称や通称の場合は正式名称に直してください。`,
+        content: `${isGame ? 'ゲーム' : 'アニメ'}作品「${name}」について、正式名称・日本語公式サイトURL・日本語WikipediaページURL・主要キャラクター名を教えてください。略称や通称の場合は正式名称に直してください。`,
       }],
     }),
     // Brave: ゲームセンター景品ページを検索
@@ -183,7 +184,8 @@ export async function POST(req: Request) {
   // 表示・検索に使う名前（略称→正式名称に置き換え）
   const effectiveName = (!malId && claudeInfo.canonicalTitle) ? claudeInfo.canonicalTitle : name.trim();
 
-  if (!malId && claudeInfo.canonicalTitle) {
+  // ゲームは Jikan(アニメ専用)で引き直すと誤解決するためスキップし、Claudeのofficialを使う
+  if (!isGame && !malId && claudeInfo.canonicalTitle) {
     try {
       const found = await fetch(
         `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(claudeInfo.canonicalTitle)}&limit=1&sfw=true`

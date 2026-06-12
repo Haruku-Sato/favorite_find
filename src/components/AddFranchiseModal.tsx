@@ -42,6 +42,7 @@ function baseKey(title: string): string {
 
 export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   const [name, setName]         = useState('');
+  const [kind, setKind]         = useState<'anime' | 'game'>('anime');
   const [step, setStep]         = useState<Step>('input');
   const [draft, setDraft]       = useState<FranchiseConfig | null>(null);
   const [errMsg, setErrMsg]     = useState('');
@@ -59,9 +60,10 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef                      = useRef<HTMLInputElement>(null);
 
-  // 入力変化 → Jikan API でサジェスト取得（400ms デバウンス）
+  // 入力変化 → Jikan API でサジェスト取得（400ms デバウンス）。ゲームは対象外
   useEffect(() => {
     if (step !== 'input' && step !== 'error') return;
+    if (kind === 'game') { setSuggestions([]); return; }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -101,7 +103,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [name, step]);
+  }, [name, step, kind]);
 
   const selectSuggestion = (s: Suggestion) => {
     setName(s.title);
@@ -147,7 +149,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
       const res = await fetch('/api/franchise/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), malId: selectedMalId }),
+        body: JSON.stringify({ name: name.trim(), malId: kind === 'game' ? null : selectedMalId, kind }),
       });
       if (!res.ok) throw new Error(await res.text());
       const { candidates: cands = [], ...config } = await res.json() as FranchiseConfig & { candidates?: SourceCandidate[] };
@@ -196,6 +198,25 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
         {/* ── 検索入力 ── */}
         {(step === 'input' || step === 'error') && (
           <>
+            {/* アニメ / ゲーム 切替 */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: '0.75rem' }}>
+              {(['anime', 'game'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => { setKind(k); setSelectedMalId(null); setSuggestions([]); }}
+                  style={{
+                    background: kind === k ? 'var(--c-blue)' : 'transparent',
+                    color: kind === k ? '#fff' : 'var(--c-text2)',
+                    border: `1px solid ${kind === k ? 'var(--c-blue)' : 'var(--c-border)'}`,
+                    borderRadius: 100, padding: '4px 16px', fontSize: '0.82rem',
+                    cursor: 'pointer', fontWeight: kind === k ? 700 : 400,
+                  }}
+                >
+                  {k === 'anime' ? 'アニメ' : 'ゲーム'}
+                </button>
+              ))}
+            </div>
+
             {/* 入力欄＋検索ボタン（横並びで固定。候補が出ても位置が動かない） */}
             <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
               <input
@@ -205,7 +226,7 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
                 onChange={(e) => { setName(e.target.value); setSelectedMalId(null); }}
                 onKeyDown={handleKeyDown}
                 onBlur={() => setTimeout(() => setSuggestions([]), 150)}
-                placeholder="例: ヒロアカ、鬼滅の刃、推しの子"
+                placeholder={kind === 'game' ? '例: 原神、ウマ娘、ブルーアーカイブ' : '例: ヒロアカ、鬼滅の刃、推しの子'}
                 style={{ ...inputStyle, flex: 1 }}
               />
               <button onClick={handleSearch} disabled={!name.trim()} style={{ ...primaryBtn(!name.trim()), flexShrink: 0, padding: '0 1.4rem', fontSize: '0.95rem' }}>
