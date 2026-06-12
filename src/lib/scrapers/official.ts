@@ -73,7 +73,46 @@ export async function scrapeOfficial(
     if (wpItems && wpItems.length > 0) return wpItems;
   } catch { /* 失敗時は generic へ */ }
 
-  // ── 汎用スクレイパーにフォールバック ──
+  // ── 汎用スクレイパー（トップページ） ──
   const { scrapeGeneric } = await import('./generic');
-  return scrapeGeneric(source, franchise);
+  const homeItems = await scrapeGeneric(source, franchise);
+  if (homeItems.length > 0) return homeItems;
+
+  // ── C) NEWS ページを辿る（トップにニュースが無いサイト向け） ──
+  // 例: チェンソーマン公式はトップに記事が無く /news/ に分かれている
+  for (const newsUrl of findNewsPages($, source.url)) {
+    try {
+      const it = await scrapeGeneric({ ...source, url: newsUrl }, franchise);
+      if (it.length > 0) return it;
+    } catch { /* 次の候補へ */ }
+  }
+
+  return homeItems; // 空
+}
+
+// トップページから「ニュース一覧ページ」候補URLを集める
+function findNewsPages($: cheerio.CheerioAPI, baseUrl: string): string[] {
+  const NEWS_RE = /news|topics|お知らせ|新着|information|infomation/i;
+  const urls = new Set<string>();
+  const origin = (() => { try { return new URL(baseUrl).origin; } catch { return ''; } })();
+
+  // 1) href か リンクテキストが news 系のアンカー（javascript:/# は除外）
+  $('a[href]').each((_, el) => {
+    const href = $(el).attr('href') ?? '';
+    const text = $(el).text();
+    if (!href || /^(#|javascript:|mailto:|tel:)/i.test(href)) return;
+    if (!NEWS_RE.test(href) && !NEWS_RE.test(text)) return;
+    try {
+      const u = new URL(href, baseUrl).href;
+      if (u.replace(/#.*$/, '') !== baseUrl.replace(/#.*$/, '')) urls.add(u);
+    } catch { /* skip */ }
+  });
+
+  // 2) よくあるパスを推測で追加（NEWSリンクが javascript: の場合の保険）
+  for (const p of ['news/', 'topics/', 'information/']) {
+    try { urls.add(new URL(p, baseUrl).href); } catch { /* skip */ }
+    if (origin) urls.add(`${origin}/${p}`);
+  }
+
+  return [...urls].slice(0, 5);
 }

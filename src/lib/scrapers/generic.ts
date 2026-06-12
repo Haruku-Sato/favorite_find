@@ -46,7 +46,9 @@ export async function scrapeGeneric(
 
   // 1件分を items に追加する共通処理
   const push = (rawTitle: string, href: string, dateText: string, img?: string) => {
-    const title = rawTitle.trim().replace(/\s+/g, ' ');
+    const title = rawTitle.trim().replace(/\s+/g, ' ')
+      // 先頭に日付が紛れ込む場合（リンクテキスト＝「2026.06.05 タイトル」等）を除去
+      .replace(/^\d{4}\s*[.\-/年]\s*\d{1,2}\s*[.\-/月]\s*\d{1,2}\s*日?\s*/, '');
     if (!title || title.length < 5 || title.length > 200 || !href) return;
 
     // href をページURL基準で絶対URL化（相対・スラッシュ有無を吸収）
