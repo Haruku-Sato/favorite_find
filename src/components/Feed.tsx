@@ -4,14 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { FeedItem } from '@/lib/scrapers';
 import type { FranchiseConfig, SourceCategory } from '@/lib/franchise';
 import { CATEGORY_LABEL } from '@/lib/franchise';
-
-const SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
-  official:         { bg: '#1a2f4a', color: '#58a6ff' },
-  ichiban:          { bg: '#3d1a1a', color: '#f85149' },
-  'ichiban-search': { bg: '#3d1a1a', color: '#f85149' },
-  generic:          { bg: '#1a3a2a', color: '#3fb950' },
-};
-const DEFAULT_COLOR = { bg: '#1a3a2a', color: '#3fb950' };
+import ArticleCard from './ArticleCard';
 
 const PALETTE = ['#f472b6','#a78bfa','#fbbf24','#f87171','#60a5fa','#34d399','#fb923c','#e879f9'];
 
@@ -165,7 +158,7 @@ export default function Feed({ franchise, initialItems }: Props) {
       </div>
 
       {/* ── フィード本体 ── */}
-      <main style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem' }}>
+      <main style={{ maxWidth: 1040, margin: '0 auto', padding: '1.5rem' }}>
         {filtered.length === 0 ? (
           // 記事0件: 登録ソースがあれば導線カードを出す（公式タブ常設のフォールバック）
           categorySources.length > 0 && !charaFilter ? (
@@ -199,49 +192,24 @@ export default function Feed({ franchise, initialItems }: Props) {
             </p>
           )
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+            gap: '1rem', alignItems: 'start',
+          }}>
             {filtered.map((item) => {
-              const isNew = !seen.has(item.id);
-              const col = SOURCE_COLORS[item.source] ?? DEFAULT_COLOR;
+              const charColors = item.characters.map((chara, i) => {
+                const idx = franchise.characters.findIndex((c) => c.name === chara);
+                return { name: chara, color: getCharColor(franchise.characters, chara, idx >= 0 ? idx : i) };
+              });
               return (
-                <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer"
-                  onClick={() => markSeen(item.id)}
-                  style={{
-                    display: 'flex', gap: '1rem', background: 'var(--c-bg2)',
-                    border: `1px solid ${isNew ? 'var(--c-new-border)' : 'var(--c-border)'}`,
-                    borderRadius: 10, padding: '0.9rem 1rem',
-                    textDecoration: 'none', color: 'inherit',
-                    opacity: seen.has(item.id) ? 0.6 : 1, transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-bg3)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--c-bg2)')}
-                >
-                  {item.imageUrl && (
-                    <img src={item.imageUrl} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-                      <span style={{ background: col.bg, color: col.color, borderRadius: 4, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>
-                        {item.sourceLabel}
-                      </span>
-                      {isNew && (
-                        <span style={{ background: 'var(--c-blue)', color: 'white', borderRadius: 4, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>NEW</span>
-                      )}
-                      {item.characters.map((chara, i) => {
-                        const idx = franchise.characters.findIndex((c) => c.name === chara);
-                        const color = getCharColor(franchise.characters, chara, idx >= 0 ? idx : i);
-                        return (
-                          <span key={chara} style={{ color, fontSize: '0.7rem', fontWeight: 600 }}>{chara}</span>
-                        );
-                      })}
-                      {item.category && <span style={{ color: 'var(--c-text2)', fontSize: '0.7rem' }}>{item.category}</span>}
-                      <span style={{ color: 'var(--c-text3)', fontSize: '0.7rem', marginLeft: 'auto' }}>{item.date ?? ''}</span>
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.title}
-                    </p>
-                  </div>
-                </a>
+                <ArticleCard
+                  key={item.id}
+                  item={item}
+                  isNew={!seen.has(item.id)}
+                  onOpen={() => markSeen(item.id)}
+                  charColors={charColors}
+                />
               );
             })}
           </div>
