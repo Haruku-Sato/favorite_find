@@ -21,6 +21,7 @@ export interface SummarizeResult {
   body: string;             // 抽出した本文（表示用）
   ogImage?: string;
   blocked?: boolean;        // botブロックで本文取得不可
+  summaryError?: boolean;   // Claude 要約に失敗（APIキー未設定など）
   fields: {
     price: string;          // 例「1回800円」/ 空文字
     releaseDate: string;    // 発売日・開催日 / 空文字
@@ -135,8 +136,12 @@ export async function POST(req: Request) {
       };
     }
   } catch {
-    // Claude 失敗時は本文のみ返す
+    // Claude 失敗（APIキー未設定・レート制限など）→ 本文のみ返しつつフラグを立てる
+    result.summaryError = true;
   }
+
+  // ツールは成功したが要約が空、のケースもエラー扱い
+  if (!result.summary) result.summaryError = true;
 
   cache.set(url, result);
   return Response.json(result);
