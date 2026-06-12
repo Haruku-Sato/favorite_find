@@ -196,8 +196,8 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
         {/* ── 検索入力 ── */}
         {(step === 'input' || step === 'error') && (
           <>
-            {/* 入力 + サジェストをまとめるラッパー */}
-            <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+            {/* 入力欄＋検索ボタン（横並びで固定。候補が出ても位置が動かない） */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
               <input
                 ref={inputRef}
                 autoFocus
@@ -206,10 +206,15 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
                 onKeyDown={handleKeyDown}
                 onBlur={() => setTimeout(() => setSuggestions([]), 150)}
                 placeholder="例: ヒロアカ、鬼滅の刃、推しの子"
-                style={inputStyle}
+                style={{ ...inputStyle, flex: 1 }}
               />
+              <button onClick={handleSearch} disabled={!name.trim()} style={{ ...primaryBtn(!name.trim()), flexShrink: 0, padding: '0 1.4rem', fontSize: '0.95rem' }}>
+                検索
+              </button>
+            </div>
 
-              {/* サジェストドロップダウン */}
+            {/* サジェスト一覧（入力欄の下。検索ボタンは上の行で固定） */}
+            <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
               {suggestions.length > 0 && (
                 <div style={{
                   marginTop: 8,
@@ -249,11 +254,8 @@ export default function AddFranchiseModal({ onAdd, onClose }: Props) {
             {step === 'error' && (
               <p style={{ color: 'var(--c-red)', fontSize: '0.82rem', marginBottom: '0.75rem' }}>{errMsg}</p>
             )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={onClose} style={ghostBtn}>キャンセル</button>
-              <button onClick={handleSearch} disabled={!name.trim()} style={primaryBtn(!name.trim())}>
-                検索
-              </button>
             </div>
           </>
         )}

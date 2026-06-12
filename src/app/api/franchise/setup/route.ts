@@ -61,6 +61,36 @@ function typeLabel(t: string): string {
   return map[t] ?? t;
 }
 
+/** 複数の公式サイト候補から日本語サイトを選ぶ（英語版を避ける） */
+async function pickJapaneseOfficial(urls: string[]): Promise<string> {
+  const list = [...new Set(urls)];
+  if (list.length === 0) return '';
+  if (list.length === 1) return list[0];
+
+  // 各候補を取得して日本語文字数でスコアリング（最大3件、タイムアウト付き）
+  const scored = await Promise.all(
+    list.slice(0, 3).map(async (url) => {
+      try {
+        const ac = AbortSignal.timeout(6000);
+        const html = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
+          signal: ac,
+          next: { revalidate: 86400 },
+        }).then((r) => r.text());
+        const ja = (html.match(/[ぁ-んァ-ヶ一-龠]/g) ?? []).length;
+        const isJpDomain = /\.jp(\/|$|:)/.test(url) ? 500 : 0;
+        return { url, score: ja + isJpDomain };
+      } catch {
+        return { url, score: 0 };
+      }
+    })
+  );
+
+  scored.sort((a, b) => b.score - a.score);
+  // 最高スコアが日本語をほぼ含まない場合でも先頭候補を返す
+  return scored[0].score > 0 ? scored[0].url : list[0];
+}
+
 /** 関連作品の relation 文字列を含むかチェック */
 const INCLUDE_RELATIONS = new Set([
   'Sequel', 'Prequel', 'Alternative version', 'Side story',
@@ -120,15 +150,17 @@ export async function POST(req: Request) {
     braveSearch(`${name} ゲームセンター 景品`, 6),
   ]);
 
-  // ── 公式URL（Jikan external から取得） ─────────────────────────────
+  // ── 公式URL（Jikan external から取得。複数あれば日本語サイトを優先） ─────
   let officialUrl = '';
   if (jikanExt.status === 'fulfilled' && jikanExt.value) {
     const ext: JikanExternal[] = jikanExt.value.data ?? [];
-    const hit = ext.find((e) =>
-      /official|公式/i.test(e.name) &&
-      !/twitter|x\.com|facebook|instagram|youtube|niconico/i.test(e.url)
-    );
-    if (hit) officialUrl = hit.url;
+    const candidates = ext
+      .filter((e) =>
+        /official|公式/i.test(e.name) &&
+        !/twitter|x\.com|facebook|instagram|youtube|niconico/i.test(e.url)
+      )
+      .map((e) => e.url);
+    officialUrl = await pickJapaneseOfficial(candidates);
   }
 
   // ── ディレクトリエントリ（Jikan relations から生成） ─────────────────

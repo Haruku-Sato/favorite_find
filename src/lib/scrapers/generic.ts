@@ -36,8 +36,16 @@ export async function scrapeGeneric(
   const items: FeedItem[] = [];
   const seen = new Set<string>();
 
+  // 要素内の最初の画像URL（src / data-src 等のlazy属性も拾う）を絶対URL化
+  const imgOf = ($el: ReturnType<typeof $>): string | undefined => {
+    const $img = $el.find('img').first();
+    const raw = $img.attr('src') || $img.attr('data-src') || $img.attr('data-original') || $img.attr('data-lazy-src');
+    if (!raw || raw.startsWith('data:')) return undefined;
+    try { return new URL(raw, source.url).href; } catch { return undefined; }
+  };
+
   // 1件分を items に追加する共通処理
-  const push = (rawTitle: string, href: string, dateText: string) => {
+  const push = (rawTitle: string, href: string, dateText: string, img?: string) => {
     const title = rawTitle.trim().replace(/\s+/g, ' ');
     if (!title || title.length < 5 || title.length > 200 || !href) return;
 
@@ -63,6 +71,7 @@ export async function scrapeGeneric(
       url,
       date,
       dateTs:      parseDateTs(date),
+      imageUrl:    img,
       characters:  detectCharacters(title, franchise.characters),
     });
   };
@@ -73,7 +82,7 @@ export async function scrapeGeneric(
     const title =
       $el.find('h1, h2, h3, h4, .title, .subject').first().text() ||
       $el.find('a').first().text();
-    push(title, $el.find('a').first().attr('href') ?? '', $el.text());
+    push(title, $el.find('a').first().attr('href') ?? '', $el.text(), imgOf($el));
   });
 
   // ── パターンB: dl/dt/dd 形式（日本のアニメ公式に多い） ──
@@ -84,7 +93,7 @@ export async function scrapeGeneric(
         const $a   = $dd.find('a').first();
         const date = $dd.prevAll('dt').first().text();
         const title = ($dd.find('.title').first().text() || $a.text());
-        push(title, $a.attr('href') ?? '', date + ' ' + $dd.text());
+        push(title, $a.attr('href') ?? '', date + ' ' + $dd.text(), imgOf($dd));
       });
     });
   }
@@ -108,7 +117,7 @@ export async function scrapeGeneric(
       if (!title) title = $a.text().trim();
       if (!title) title = $el.clone().find(DATE_SEL).remove().end().text().trim();
 
-      push(title, $a.attr('href') ?? '', dateText);
+      push(title, $a.attr('href') ?? '', dateText, imgOf($el));
     });
   }
 

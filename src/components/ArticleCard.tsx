@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FeedItem } from '@/lib/scrapers';
 import type { SummarizeResult } from '@/app/api/summarize/route';
 
@@ -23,9 +23,21 @@ export default function ArticleCard({ item, isNew, onOpen, charColors }: Props) 
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [data, setData]         = useState<SummarizeResult | null>(null);
+  const [ogImage, setOgImage]   = useState<string | undefined>();
 
   const col = SOURCE_COLORS[item.source] ?? DEFAULT_COLOR;
-  const image = item.imageUrl || data?.ogImage;
+  const image = item.imageUrl || data?.ogImage || ogImage;
+
+  // 一覧サムネが無い場合、開く前に og:image を取得して最初から画像を出す
+  useEffect(() => {
+    if (item.imageUrl) return;
+    let alive = true;
+    fetch(`/api/ogimage?url=${encodeURIComponent(item.url)}`)
+      .then((r) => r.json())
+      .then((d) => { if (alive && d.image) setOgImage(d.image); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [item.url, item.imageUrl]);
 
   const toggle = async () => {
     const next = !expanded;
