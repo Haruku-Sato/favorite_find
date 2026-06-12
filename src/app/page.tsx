@@ -13,6 +13,26 @@ function scrapeKey(franchiseId: string, entryId: string | null) {
   return entryId ? `${franchiseId}__${entryId}` : franchiseId;
 }
 
+// ── 取得結果の localStorage キャッシュ（詳細ページ遷移後の再取得を防ぐ） ──
+const ITEMS_CACHE_PREFIX = 'favorite_find_items_';
+const ITEMS_TTL = 60 * 60 * 1000; // 60分（fetch の revalidate と同等）
+
+function loadItemsCache(key: string): FeedItem[] | null {
+  try {
+    const raw = localStorage.getItem(ITEMS_CACHE_PREFIX + key);
+    if (!raw) return null;
+    const { ts, items } = JSON.parse(raw) as { ts: number; items: FeedItem[] };
+    if (Date.now() - ts > ITEMS_TTL) return null; // 古い
+    return items;
+  } catch { return null; }
+}
+
+function saveItemsCache(key: string, items: FeedItem[]) {
+  try {
+    localStorage.setItem(ITEMS_CACHE_PREFIX + key, JSON.stringify({ ts: Date.now(), items }));
+  } catch { /* 容量超過等は無視 */ }
+}
+
 export default function Page() {
   const [franchises, setFranchises]       = useState<FranchiseConfig[]>([]);
   const [activeId, setActiveId]           = useState<string>(MADOKA_DEFAULT.id);
@@ -58,6 +78,13 @@ export default function Page() {
 
     if (sources.length === 0) return;
 
+    // localStorage キャッシュが鮮度内なら再取得しない（詳細ページから戻った時など）
+    const cached = loadItemsCache(key);
+    if (cached) {
+      setItemsMap((prev) => ({ ...prev, [key]: cached }));
+      return;
+    }
+
     setLoading(true);
     fetch('/api/franchise/scrape', {
       method: 'POST',
@@ -65,7 +92,10 @@ export default function Page() {
       body: JSON.stringify({ franchise: { ...franchise, sources } }),
     })
       .then((r) => r.json())
-      .then((items: FeedItem[]) => setItemsMap((prev) => ({ ...prev, [key]: items })))
+      .then((items: FeedItem[]) => {
+        setItemsMap((prev) => ({ ...prev, [key]: items }));
+        saveItemsCache(key, items);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [activeId, activeEntryId, franchises, itemsMap]);
