@@ -127,6 +127,14 @@ export async function POST(req: Request) {
         input_schema: {
           type: 'object' as const,
           properties: {
+            canonicalTitle: {
+              type: 'string',
+              description: '作品の正式名称（日本語）。略称や通称で渡された場合は正式名称に直す。例: まどマギ→魔法少女まどか☆マギカ、ヒロアカ→僕のヒーローアカデミア、リコリコ→リコリス・リコイル。分からなければ入力そのまま。',
+            },
+            officialUrl: {
+              type: 'string',
+              description: '分かれば日本語の公式サイトURL。不明なら空文字。',
+            },
             wikiUrl: {
               type: 'string',
               description: '日本語 Wikipedia ページの URL。不明なら空文字。',
@@ -137,23 +145,65 @@ export async function POST(req: Request) {
               description: '主要キャラクターの名前リスト（日本語）。最大10名。',
             },
           },
-          required: ['wikiUrl', 'characters'],
+          required: ['canonicalTitle', 'officialUrl', 'wikiUrl', 'characters'],
         },
       }],
       tool_choice: { type: 'tool', name: 'franchise_info' },
       messages: [{
         role: 'user',
-        content: `アニメ作品「${name}」の日本語Wikipediaページ URLと主要キャラクター名を教えてください。`,
+        content: `アニメ作品「${name}」について、正式名称・日本語公式サイトURL・日本語WikipediaページURL・主要キャラクター名を教えてください。略称や通称の場合は正式名称に直してください。`,
       }],
     }),
     // Brave: ゲームセンター景品ページを検索
     braveSearch(`${name} ゲームセンター 景品`, 6),
   ]);
 
-  // ── 公式URL（Jikan external から取得。複数あれば日本語サイトを優先） ─────
+  // ── Claude の結果を解析（正式名称・公式URL・wiki・キャラ） ───────────
+  const claudeInfo: { canonicalTitle: string; officialUrl: string; wikiUrl: string; characters: string[] } =
+    { canonicalTitle: '', officialUrl: '', wikiUrl: '', characters: [] };
+  if (claudeRes.status === 'fulfilled') {
+    const toolUse = claudeRes.value.content.find((b) => b.type === 'tool_use');
+    if (toolUse?.type === 'tool_use') {
+      const o = toolUse.input as Partial<typeof claudeInfo>;
+      claudeInfo.canonicalTitle = (o.canonicalTitle ?? '').trim();
+      claudeInfo.officialUrl    = (o.officialUrl ?? '').trim();
+      claudeInfo.wikiUrl        = (o.wikiUrl ?? '').trim();
+      claudeInfo.characters     = Array.isArray(o.characters) ? o.characters : [];
+    }
+  }
+
+  // ── 有効な Jikan データ・malId を確定（malId 無しは正式名称で引き直す） ──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let jMain: any = jikanMain.status === 'fulfilled' ? jikanMain.value : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let jExt: any  = jikanExt.status === 'fulfilled' ? jikanExt.value : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let jRel: any  = jikanRel.status === 'fulfilled' ? jikanRel.value : null;
+  let effectiveMalId = malId;
+  // 表示・検索に使う名前（略称→正式名称に置き換え）
+  const effectiveName = (!malId && claudeInfo.canonicalTitle) ? claudeInfo.canonicalTitle : name.trim();
+
+  if (!malId && claudeInfo.canonicalTitle) {
+    try {
+      const found = await fetch(
+        `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(claudeInfo.canonicalTitle)}&limit=1&sfw=true`
+      ).then((r) => r.json());
+      const hit = found?.data?.[0];
+      if (hit?.mal_id) {
+        effectiveMalId = hit.mal_id;
+        [jMain, jExt, jRel] = await Promise.all([
+          fetch(`https://api.jikan.moe/v4/anime/${effectiveMalId}`).then((r) => r.json()),
+          fetch(`https://api.jikan.moe/v4/anime/${effectiveMalId}/external`).then((r) => r.json()),
+          fetch(`https://api.jikan.moe/v4/anime/${effectiveMalId}/relations`).then((r) => r.json()),
+        ]);
+      }
+    } catch { /* 引き直し失敗時は Claude の officialUrl 等にフォールバック */ }
+  }
+
+  // ── 公式URL（Jikan external 優先 → Claude フォールバック） ─────────────
   let officialUrl = '';
-  if (jikanExt.status === 'fulfilled' && jikanExt.value) {
-    const ext: JikanExternal[] = jikanExt.value.data ?? [];
+  if (jExt) {
+    const ext: JikanExternal[] = jExt.data ?? [];
     const candidates = ext
       .filter((e) =>
         /official|公式/i.test(e.name) &&
@@ -162,18 +212,18 @@ export async function POST(req: Request) {
       .map((e) => e.url);
     officialUrl = await pickJapaneseOfficial(candidates);
   }
+  if (!officialUrl && claudeInfo.officialUrl) officialUrl = claudeInfo.officialUrl;
 
   // ── ディレクトリエントリ（Jikan relations から生成） ─────────────────
   let entries: FranchiseEntry[] | undefined;
 
-  if (jikanMain.status === 'fulfilled' && jikanMain.value?.data && malId) {
-    const mainData = jikanMain.value.data;
+  if (jMain?.data && effectiveMalId) {
+    const mainData = jMain.data;
     const mainLabel = typeLabel(mainData.type ?? 'TV');
-    const mainTitle: string = mainData.title_japanese || mainData.title || name;
+    const mainTitle: string = mainData.title_japanese || mainData.title || effectiveName;
 
     // 関連作品を取得
-    const relations: JikanRelation[] =
-      jikanRel.status === 'fulfilled' ? (jikanRel.value?.data ?? []) : [];
+    const relations: JikanRelation[] = jRel?.data ?? [];
 
     const relatedEntries: FranchiseEntry[] = relations
       .filter((r) => INCLUDE_RELATIONS.has(r.relation))
@@ -199,9 +249,9 @@ export async function POST(req: Request) {
     if (relatedEntries.length > 0) {
       // 本編エントリ（先頭）+ 関連作品エントリ
       const mainEntry: FranchiseEntry = {
-        id: `entry-${malId}`,
+        id: `entry-${effectiveMalId}`,
         label: mainLabel,
-        malId,
+        malId: effectiveMalId,
         sources: [
           ...(officialUrl ? [{ type: 'official' as const, category: 'official' as const, label: '公式', url: officialUrl }] : []),
           {
@@ -225,43 +275,34 @@ export async function POST(req: Request) {
     type: 'ichiban-search',
     category: 'ichiban',
     label: '一番くじ',
-    url: `https://1kuji.com/products/search?word=${encodeURIComponent(name.trim())}`,
+    url: `https://1kuji.com/products/search?word=${encodeURIComponent(effectiveName)}`,
   });
 
   // ── キャラクター（Wikipedia → Claude フォールバック） ───────────────
   let characters: CharacterDef[] = [];
-  let wikiUrl = '';
-
-  if (claudeRes.status === 'fulfilled') {
-    const toolUse = claudeRes.value.content.find((b) => b.type === 'tool_use');
-    if (toolUse?.type === 'tool_use') {
-      const info = toolUse.input as { wikiUrl: string; characters: string[] };
-      wikiUrl = info.wikiUrl ?? '';
-      if (wikiUrl) {
-        try {
-          characters = await detectCharactersFromWikipedia(wikiUrl);
-        } catch { /* ignore */ }
-      }
-      // Wikipedia から取れなければ Claude のキャラリストを使う
-      if (characters.length === 0 && info.characters?.length > 0) {
-        characters = info.characters.map((charName) => {
-          const parts = charName.trim().split(/\s+/);
-          return {
-            name: parts[parts.length - 1] || charName,
-            keywords: [...new Set([charName, ...parts])].filter((k) => k.length >= 2),
-          };
-        });
-      }
-    }
+  if (claudeInfo.wikiUrl) {
+    try {
+      characters = await detectCharactersFromWikipedia(claudeInfo.wikiUrl);
+    } catch { /* ignore */ }
+  }
+  // Wikipedia から取れなければ Claude のキャラリストを使う
+  if (characters.length === 0 && claudeInfo.characters.length > 0) {
+    characters = claudeInfo.characters.map((charName) => {
+      const parts = charName.trim().split(/\s+/);
+      return {
+        name: parts[parts.length - 1] || charName,
+        keywords: [...new Set([charName, ...parts])].filter((k) => k.length >= 2),
+      };
+    });
   }
 
   const id =
-    name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]/g, '') + '-' + Date.now();
+    effectiveName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]/g, '') + '-' + Date.now();
 
   const config: FranchiseConfig = {
     id,
-    name:       name.trim(),
-    searchName: name.trim(),
+    name:       effectiveName,
+    searchName: effectiveName,
     characters,
     sources,
     ...(entries ? { entries } : {}),
@@ -277,7 +318,7 @@ export async function POST(req: Request) {
   // コラボ RSS にフランチャイズ名をキーワードとして付与
   const collabCandidates: SourceCandidate[] = COLLAB_RSS.map((c) => ({
     ...c,
-    keywords: [name.trim(), 'コラボ'],
+    keywords: [effectiveName, 'コラボ'],
   }));
 
   const candidates: SourceCandidate[] = [...gcCandidates, ...collabCandidates];

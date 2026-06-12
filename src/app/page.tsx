@@ -317,11 +317,11 @@ export default function Page() {
 
           <div style={{ fontSize: '2.8rem' }}>🔍</div>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--c-text)', margin: 0, textAlign: 'center' }}>
-            好きな作品を追加しよう
+            好きなアニメ作品を追加しよう
           </h1>
           <p style={{ color: 'var(--c-text2)', fontSize: '0.9rem', textAlign: 'center', lineHeight: 1.7, margin: 0 }}>
             公式サイト・一番くじなどから最新情報をまとめて表示します。<br />
-            まずは気になる作品名を入力してください。
+            まずはアニメ作品名を入力してください。
           </p>
           <button
             onClick={() => setShowModal(true)}
