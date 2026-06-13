@@ -21,7 +21,7 @@ const COLLAB_RSS: SourceCandidate[] = [
 ];
 
 // ── Brave 検索結果をソース候補に変換 ─────────────────────
-const EXCLUDE_DOMAINS = /twitter|x\.com|facebook|instagram|youtube|wikipedia|amazon|rakuten|mercari|yahoo/i;
+const EXCLUDE_DOMAINS = /twitter|[/.]x\.com|facebook|instagram|youtube|wikipedia|amazon|rakuten|mercari|yahoo/i;
 
 function braveToCandidate(
   results: Awaited<ReturnType<typeof braveSearch>>,
@@ -59,6 +59,22 @@ function typeLabel(t: string): string {
     ONA: 'ONA', Special: 'スペシャル',
   };
   return map[t] ?? t;
+}
+
+// 攻略wiki・ファンサイト・個人ブログ・まとめ等を示すホスト名の部分一致
+const FAN_HOST_RE =
+  /wiki|fandom|atwiki|seesaa|fc2|ameblo|hatena|livedoor|blog|gamewith|game8|altema|kouryaku|matome|2ch|5ch/i;
+// SNS等は「ホスト完全一致 or サブドメイン」のみ除外（enix.com 等への誤爆を防ぐ）
+const SNS_HOSTS = ['twitter.com', 'x.com', 'facebook.com', 'instagram.com', 'tiktok.com', 'youtube.com', 'youtu.be', 'reddit.com', 'note.com'];
+
+function isFanOrNonOfficial(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (SNS_HOSTS.some((d) => host === d || host.endsWith('.' + d))) return true;
+    return FAN_HOST_RE.test(host);
+  } catch {
+    return true; // 不正なURLは弾く
+  }
 }
 
 /** 複数の公式サイト候補から日本語サイトを選ぶ（英語版を避ける） */
@@ -134,7 +150,7 @@ export async function POST(req: Request) {
             },
             officialUrl: {
               type: 'string',
-              description: '分かれば日本語の公式サイトURL。不明なら空文字。',
+              description: 'メーカー・版元が運営する日本語の公式サイトURLのみ。攻略wiki・ファンサイト・個人サイト・まとめ・SNSは絶対に含めない。確信が持てなければ空文字。',
             },
             wikiUrl: {
               type: 'string',
@@ -214,7 +230,19 @@ export async function POST(req: Request) {
       .map((e) => e.url);
     officialUrl = await pickJapaneseOfficial(candidates);
   }
-  if (!officialUrl && claudeInfo.officialUrl) officialUrl = claudeInfo.officialUrl;
+  // Brave で「公式サイト」を検索して補完（特にゲーム。BRAVE_SEARCH_API_KEY が必要）
+  // ファン/wiki/ブログ/SNS/ショッピングを除外し、上位の本命を採用
+  if (!officialUrl) {
+    try {
+      const r = await braveSearch(`${effectiveName} 公式サイト`, 6);
+      const hit = r.find((x) => !isFanOrNonOfficial(x.url) && !EXCLUDE_DOMAINS.test(x.url));
+      if (hit) officialUrl = hit.url;
+    } catch { /* キー未設定/失敗時は Claude へ */ }
+  }
+  // Claude フォールバック（ファン/wiki/ブログ/SNS等は除外して誤公式を防ぐ）
+  if (!officialUrl && claudeInfo.officialUrl && !isFanOrNonOfficial(claudeInfo.officialUrl)) {
+    officialUrl = claudeInfo.officialUrl;
+  }
 
   // ── ディレクトリエントリ（Jikan relations から生成） ─────────────────
   let entries: FranchiseEntry[] | undefined;
