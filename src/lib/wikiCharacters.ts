@@ -1,19 +1,67 @@
 import * as cheerio from 'cheerio';
 import type { CharacterDef } from './franchise';
 
+type Cheerio$ = cheerio.CheerioAPI;
+
+/**
+ * Wikipedia ページを1回取得して、キャラ一覧と公式サイトURLの両方を返す。
+ */
+export async function fetchWikipediaInfo(
+  wikiUrl: string
+): Promise<{ characters: CharacterDef[]; officialUrl: string }> {
+  try {
+    const res = await fetch(wikiUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
+    });
+    if (!res.ok) return { characters: [], officialUrl: '' };
+    const $ = cheerio.load(await res.text());
+    return { characters: parseCharacters($), officialUrl: parseOfficialUrl($) };
+  } catch {
+    return { characters: [], officialUrl: '' };
+  }
+}
+
+/** 後方互換: キャラのみ取得 */
+export async function detectCharactersFromWikipedia(
+  wikiUrl: string
+): Promise<CharacterDef[]> {
+  return (await fetchWikipediaInfo(wikiUrl)).characters;
+}
+
+// ニュース媒体・ファン・SNS 等（公式サイトとして採用しない）
+const NON_OFFICIAL_RE =
+  /wiki(pedia|media|data)\.org|gigazine|natalie\.mu|animeanime|famitsu|4gamer|dengeki|gamer\.ne\.jp|prtimes|inside-games|gamebiz|gamespark|oricon|mantan-web|ign|fandom|atwiki|wikiwiki|seesaa|fc2|ameblo|hatena|livedoor|note\.com|gamewith|game8|altema|youtube|youtu\.be|twitter|[/.]x\.com|facebook|instagram|tiktok/i;
+
+/** Wikipedia の infobox / 外部リンクから公式サイトURLを抽出 */
+function parseOfficialUrl($: Cheerio$): string {
+  let url = '';
+
+  // 1) infobox の「公式サイト」行（th ラベルが公式）
+  $('.infobox tr').each((_, tr) => {
+    const label = $(tr).find('th').text();
+    if (/公式|オフィシャル/.test(label)) {
+      const href = $(tr).find('a[href^="http"]').first().attr('href') ?? '';
+      if (href && !NON_OFFICIAL_RE.test(href)) { url = href; return false; }
+    }
+  });
+  if (url) return url;
+
+  // 2) 「公式サイト/ウェブサイト/HP」を含むリスト項目の最初の外部リンク
+  $('li').each((_, li) => {
+    const $li = $(li);
+    if (/公式(サイト|ウェブサイト|ホームページ|ページ|HP)/.test($li.text())) {
+      const href = $li.find('a[href^="http"]').first().attr('href') ?? '';
+      if (href && !NON_OFFICIAL_RE.test(href)) { url = href; return false; }
+    }
+  });
+  return url;
+}
+
 /**
  * Wikipedia の「登場人物」セクションからキャラクター名を抽出する。
  * 名前 + よみがな（ひらがな）をキーワードとして CharacterDef を生成。
  */
-export async function detectCharactersFromWikipedia(
-  wikiUrl: string
-): Promise<CharacterDef[]> {
-  const res = await fetch(wikiUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FavoriteFind/1.0)' },
-  });
-  if (!res.ok) return [];
-
-  const $ = cheerio.load(await res.text());
+function parseCharacters($: Cheerio$): CharacterDef[] {
   const chars: CharacterDef[] = [];
   const seen = new Set<string>();
 

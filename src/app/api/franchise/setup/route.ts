@@ -9,8 +9,7 @@
  * キャラクターは Wikipedia から抽出し、取れなければ Claude にフォールバック。
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { detectCharactersFromWikipedia } from '@/lib/wikiCharacters';
-import { braveSearch } from '@/lib/brave';
+import { fetchWikipediaInfo } from '@/lib/wikiCharacters';
 import type { FranchiseConfig, FranchiseEntry, SourceConfig, SourceCandidate, CharacterDef } from '@/lib/franchise';
 
 // ── コラボ監視用 RSS フィード（固定） ────────────────────
@@ -19,29 +18,6 @@ const COLLAB_RSS: SourceCandidate[] = [
   { category: 'collab', type: 'rss', label: 'アニメ!アニメ!',     url: 'https://animeanime.jp/rss/index.rdf' },
   { category: 'collab', type: 'rss', label: 'ナタリー',           url: 'https://natalie.mu/comic/feed/news' },
 ];
-
-// ── Brave 検索結果をソース候補に変換 ─────────────────────
-const EXCLUDE_DOMAINS = /twitter|[/.]x\.com|facebook|instagram|youtube|wikipedia|amazon|rakuten|mercari|yahoo/i;
-
-function braveToCandidate(
-  results: Awaited<ReturnType<typeof braveSearch>>,
-  category: SourceCandidate['category'],
-): SourceCandidate[] {
-  const seen = new Set<string>();
-  return results
-    .filter((r) => !EXCLUDE_DOMAINS.test(r.url))
-    .map((r) => {
-      try {
-        const u = new URL(r.url);
-        // ドメイン＋第1パスセグメントまでに丸める（サブページを除去）
-        const segments = u.pathname.split('/').filter(Boolean);
-        const path = segments.length > 0 ? `/${segments[0]}/` : '/';
-        return { url: u.origin + path, label: r.title.split(/[|｜\-–]/)[0].trim() || u.hostname };
-      } catch { return null; }
-    })
-    .filter((r): r is { url: string; label: string } => r !== null && !seen.has(r.url) && seen.add(r.url) !== undefined)
-    .map((r) => ({ category, type: 'generic' as const, label: r.label, url: r.url }));
-}
 
 export const dynamic = 'force-dynamic';
 
@@ -120,8 +96,8 @@ export async function POST(req: Request) {
   }
   const isGame = kind === 'game';
 
-  // ── Jikan / Claude / Brave を並列実行 ──────────────────────────────
-  const [jikanMain, jikanExt, jikanRel, claudeRes, braveGC] = await Promise.allSettled([
+  // ── Jikan / Claude を並列実行 ──────────────────────────────────────
+  const [jikanMain, jikanExt, jikanRel, claudeRes] = await Promise.allSettled([
     // Jikan: メインアニメ情報（type を取るため）
     malId
       ? fetch(`https://api.jikan.moe/v4/anime/${malId}`).then((r) => r.json())
@@ -171,8 +147,6 @@ export async function POST(req: Request) {
         content: `${isGame ? 'ゲーム' : 'アニメ'}作品「${name}」について、正式名称・日本語公式サイトURL・日本語WikipediaページURL・主要キャラクター名を教えてください。略称や通称の場合は正式名称に直してください。`,
       }],
     }),
-    // Brave: ゲームセンター景品ページを検索
-    braveSearch(`${name} ゲームセンター 景品`, 6),
   ]);
 
   // ── Claude の結果を解析（正式名称・公式URL・wiki・キャラ） ───────────
@@ -218,7 +192,12 @@ export async function POST(req: Request) {
     } catch { /* 引き直し失敗時は Claude の officialUrl 等にフォールバック */ }
   }
 
-  // ── 公式URL（Jikan external 優先 → Claude フォールバック） ─────────────
+  // ── Wikipedia を1回取得（キャラ＋公式URL） ───────────────────────────
+  const wikiInfo = claudeInfo.wikiUrl
+    ? await fetchWikipediaInfo(claudeInfo.wikiUrl)
+    : { characters: [], officialUrl: '' };
+
+  // ── 公式URL（Jikan external 優先 → Wikipedia → Claude フォールバック） ──
   let officialUrl = '';
   if (jExt) {
     const ext: JikanExternal[] = jExt.data ?? [];
@@ -230,16 +209,11 @@ export async function POST(req: Request) {
       .map((e) => e.url);
     officialUrl = await pickJapaneseOfficial(candidates);
   }
-  // Brave で「公式サイト」を検索して補完（特にゲーム。BRAVE_SEARCH_API_KEY が必要）
-  // ファン/wiki/ブログ/SNS/ショッピングを除外し、上位の本命を採用
-  if (!officialUrl) {
-    try {
-      const r = await braveSearch(`${effectiveName} 公式サイト`, 6);
-      const hit = r.find((x) => !isFanOrNonOfficial(x.url) && !EXCLUDE_DOMAINS.test(x.url));
-      if (hit) officialUrl = hit.url;
-    } catch { /* キー未設定/失敗時は Claude へ */ }
+  // 公式が未確定なら、Wikipedia から抽出した公式URL → Claude の順でフォールバック
+  // （いずれもファン/wiki/SNS は除外）
+  if (!officialUrl && wikiInfo.officialUrl && !isFanOrNonOfficial(wikiInfo.officialUrl)) {
+    officialUrl = wikiInfo.officialUrl;
   }
-  // Claude フォールバック（ファン/wiki/ブログ/SNS等は除外して誤公式を防ぐ）
   if (!officialUrl && claudeInfo.officialUrl && !isFanOrNonOfficial(claudeInfo.officialUrl)) {
     officialUrl = claudeInfo.officialUrl;
   }
@@ -309,12 +283,7 @@ export async function POST(req: Request) {
   });
 
   // ── キャラクター（Wikipedia → Claude フォールバック） ───────────────
-  let characters: CharacterDef[] = [];
-  if (claudeInfo.wikiUrl) {
-    try {
-      characters = await detectCharactersFromWikipedia(claudeInfo.wikiUrl);
-    } catch { /* ignore */ }
-  }
+  let characters: CharacterDef[] = wikiInfo.characters;
   // Wikipedia から取れなければ Claude のキャラリストを使う
   if (characters.length === 0 && claudeInfo.characters.length > 0) {
     characters = claudeInfo.characters.map((charName) => {
@@ -340,18 +309,11 @@ export async function POST(req: Request) {
   };
 
   // ── candidates（ユーザーが選択可能な追加候補） ─────────────────
-  const gcCandidates: SourceCandidate[] =
-    braveGC.status === 'fulfilled'
-      ? braveToCandidate(braveGC.value, 'game-center')
-      : [];
-
   // コラボ RSS にフランチャイズ名をキーワードとして付与
-  const collabCandidates: SourceCandidate[] = COLLAB_RSS.map((c) => ({
+  const candidates: SourceCandidate[] = COLLAB_RSS.map((c) => ({
     ...c,
     keywords: [effectiveName, 'コラボ'],
   }));
-
-  const candidates: SourceCandidate[] = [...gcCandidates, ...collabCandidates];
 
   return Response.json({ ...config, candidates });
 }
